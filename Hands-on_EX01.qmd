@@ -3,6 +3,162 @@ title: "Hands-on Exercise 1"
 editor: visual
 ---
 
-# **Overview**
+# **Part 1: Basics of Using Geospatial Data**
 
-testing1234
+The purpose of this exercise is to practice the basics of using geospatial data in R.
+
+### Packages Used
+
+`sf` is used to manipulate geospatial data and `tidyverse` for aspatial data. `kableExtra` makes tables with nicer formating.
+
+```{r}
+packages = c('sf', 'tidyverse', 'kableExtra')
+for (p in packages){
+  if(!require(p, character.only = T)){
+    install.packages(p)
+  }
+  library(p,character.only = T)
+}
+```
+
+## Importing and Preparing Data
+
+### Loading Data
+
+Let's load the geospatial data.
+
+```{r}
+mpsz = st_read(dsn = "Hands-on_EX01/data/geospatial", 
+               layer = "MP14_SUBZONE_WEB_PL")
+
+cyclingpath = st_read(dsn = "Hands-on_EX01/data/geospatial", 
+                      layer = "CyclingPath")
+
+preschool = st_read("Hands-on_EX01/data/geospatial/pre-schools-location-kml.kml")
+
+
+```
+
+We can see that each file has a different geometry type to represent different types of features.
+
+We can also see that `mpsz` and `cyclingpath` both have the same projected CRS of SVY21 but preschools has a geodetic CRS of WGS 84. These refer to the coordinate systems to model geographic location and how to represent this information on a flat surface. [Here](https://www.esri.com/arcgis-blog/products/arcgis-pro/mapping/gcs_vs_pcs/) is a detailed explanation on why coordinate systems are needed and the difference between a geodetic CRS (GCS) and projected CRS (PCS).
+
+### Checking the Data
+
+The `st_geometry` command displays the geometry information of a spatial dataset.
+
+```{r}
+st_geometry(mpsz)
+```
+
+We can use `glimpse` to get an overview of the different variables in the dataset and `head` to view the first few entries.
+
+```{r}
+glimpse(mpsz)
+```
+
+```{r}
+head(mpsz, n=5) %>%
+  kable() %>%
+  kable_styling()
+```
+
+We can also create simple plots of spatial data using the base R `plot` function. We can use indexing to indicate the variable to group by.
+
+```{r}
+plot(mpsz["CA_IND"])
+```
+
+### Fixing the Projections
+
+The `st_crs` displays the details of a spatial dataset's projection. In this example, the EPSG code has been wrongly specified and needs to be corrected. The `st_set_crs` command only changes the code but does not actually change the coordinate system. It is only used to correcting wrongly specified projection information.
+
+```{r}
+st_crs(mpsz)
+```
+
+```{r}
+mpsz <- st_set_crs(mpsz, 3414)
+```
+
+To change the coordinate system (called transformation or projection), we use the the `st_transform` function. We will use this function to transform the preschool dataset to the same projection system as the other 2 layers (SVY21).
+
+```{r}
+preschool <- st_transform(preschool,
+                          crs=3414)
+```
+
+### Transforming Aspatial Data to Geospatial Data
+
+Sometimes we have datasets that have spatial information (e.g. latitude and longitude) that are not already in geospatal file formats (shp, gpkg, kml). We will need to import them as aspatial data first then specify which variables contain the geometries and how to represent these data spatially (ie. the coordinate system).
+
+```{r}
+listings <- read_csv("Hands-on_EX01/data/aspatial/listings.csv")
+
+glimpse(listings)
+```
+
+From the glimpse, we can see that the latitude and longitude variables contain the spatial information we need. The units used are decimal degrees.
+
+Now let's use the `st_as_sf` function to transform the listings dataset into geospatial data. Use the `coords` argument to specify the x and y coordinates (longitude then latitude) respectively. We assume that the original coordinate system was WGS84 (EPSG 4326) and reproject it to SVY21 (EPSG 3414).
+
+```{r}
+listings_sf <- st_as_sf(listings,
+                        coords = c("longitude", "latitude"),
+                        crs = 4326) %<%
+  st_transform(crs=3414)
+```
+
+## Simple Geoprocessing
+
+### Buffers
+
+Buffers create a zone around a feature. It is used in geospatial analyses in conjunction with other functions to measure access to amenities (e.g. how many households are within 500m proximity to an MRT station?). The function is `st_buffer`.
+
+In this example, we want to calculate the area of land that needs to be set aside for to 5m wide cycling paths.. The original cycling path layer is a polyline dataset which has no width so we need to use create a buffer first then calculate area using the `st_area` function.
+
+```{r}
+buffer_cycling <- st_buffer(cyclingpath, 
+                            dist=5, nQuadSegs = 30) %>%
+  mutate(area = st_area(buffer_cycling))
+
+sum(buffer_cycling$area)
+```
+
+### Point-in-Polygon Counts
+
+Counting the number of points (features) in a polygon is another common geoprocessing tool. We use the `st_intersects` function to relate the point and polygon layers spatially. It will output a list of points located within each polygon (by their respective indices). The lengths function from base R is used to find the number of elements (ie pre-schools) in each polygon.
+
+In this example, we will count the number of pre-schools in each subzone.
+
+```{r}
+mpsz <- mpsz %>%
+  mutate(preschools = lengths(st_intersects(x=mpsz,y=preschool)))
+
+plot(mpsz["preschools"])
+
+```
+
+# Part 2: Choropleth Maps
+
+This part is to practice creating choropleth maps in R using the `tmap` package.
+
+### Packages Used
+
+For this exercise, we use another new package `tmap` which allows more customisation when drawing maps compared to the base R `plot` function.
+
+```{r}
+packages = c('sf', 'tidyverse', 'tmap', 'kableExtra')
+for (p in packages){
+  if(!require(p, character.only = T)){
+    install.packages(p)
+  }
+  library(p,character.only = T)
+}
+```
+
+## Importing and Preparing Data
+
+### Loading Data
+
+This exercise uses the `mpsz` dataset from Part 1 and continue 

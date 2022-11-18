@@ -11,7 +11,7 @@ The purpose of this exercise is to practice the basics of using geospatial data 
 
 `sf` is used to manipulate geospatial data and `tidyverse` for aspatial data. `kableExtra` makes tables with nicer formating.
 
-```{r}
+```{r, include=FALSE}
 packages = c('sf', 'tidyverse', 'kableExtra')
 for (p in packages){
   if(!require(p, character.only = T)){
@@ -28,14 +28,13 @@ for (p in packages){
 Let's load the geospatial data.
 
 ```{r}
-mpsz = st_read(dsn = "Hands-on_EX01/data/geospatial", 
+mpsz = st_read(dsn = "data/geospatial", 
                layer = "MP14_SUBZONE_WEB_PL")
 
-cyclingpath = st_read(dsn = "Hands-on_EX01/data/geospatial", 
+cyclingpath = st_read(dsn = "data/geospatial", 
                       layer = "CyclingPath")
 
-preschool = st_read("Hands-on_EX01/data/geospatial/pre-schools-location-kml.kml")
-
+preschool = st_read("data/geospatial/pre-schools-location-kml.kml")
 
 ```
 
@@ -62,6 +61,7 @@ head(mpsz, n=5) %>%
   kable() %>%
   kable_styling()
 ```
+
 
 We can also create simple plots of spatial data using the base R `plot` function. We can use indexing to indicate the variable to group by.
 
@@ -93,7 +93,7 @@ preschool <- st_transform(preschool,
 Sometimes we have datasets that have spatial information (e.g. latitude and longitude) that are not already in geospatal file formats (shp, gpkg, kml). We will need to import them as aspatial data first then specify which variables contain the geometries and how to represent these data spatially (ie. the coordinate system).
 
 ```{r}
-listings <- read_csv("Hands-on_EX01/data/aspatial/listings.csv")
+listings <- read_csv("data/aspatial/listings.csv")
 
 glimpse(listings)
 ```
@@ -105,7 +105,7 @@ Now let's use the `st_as_sf` function to transform the listings dataset into geo
 ```{r}
 listings_sf <- st_as_sf(listings,
                         coords = c("longitude", "latitude"),
-                        crs = 4326) %<%
+                        crs = 4326) %>%
   st_transform(crs=3414)
 ```
 
@@ -119,8 +119,9 @@ In this example, we want to calculate the area of land that needs to be set asid
 
 ```{r}
 buffer_cycling <- st_buffer(cyclingpath, 
-                            dist=5, nQuadSegs = 30) %>%
-  mutate(area = st_area(buffer_cycling))
+                            dist=5, nQuadSegs = 30)
+
+buffer_cycling$area = st_area(buffer_cycling)
 
 sum(buffer_cycling$area)
 ```
@@ -147,7 +148,7 @@ This part is to practice creating choropleth maps in R using the `tmap` package.
 
 For this exercise, we use another new package `tmap` which allows more customisation when drawing maps compared to the base R `plot` function.
 
-```{r}
+```{r, include=FALSE}
 packages = c('sf', 'tidyverse', 'tmap', 'kableExtra')
 for (p in packages){
   if(!require(p, character.only = T)){
@@ -159,6 +160,95 @@ for (p in packages){
 
 ## Importing and Preparing Data
 
-### Loading Data
+### Loading and Manipulating Data
 
-This exercise uses the `mpsz` dataset from Part 1 and continue 
+This exercise uses the `mpsz` dataset from Part 1 and a new attribute dataset containing population data by subzone.
+
+```{r}
+popdata <- read_csv("data/aspatial/respopagesextod2011to2020.csv")
+```
+
+```{r}
+glimpse(popdata)
+```
+
+```{r}
+head(popdata, n=5) %>%
+  kable() %>%
+  kable_styling()
+```
+
+For this exercise, we will only be using the 2020 data. We need to relate the attribute data to the `mpsz` dataset. First, we need to manipulate the attribute data to create the following variables:
+
+-   YOUNG: age group 0 to 4 until age group 20 to 24
+
+-   ECONOMYACTIVE: age group 25-29 until age group 60-64
+
+-   AGED: age group 65 and above
+
+-   TOTAL: all age group
+
+-   DEPENDENCY: the ratio between young and aged against economy active group
+
+```{r}
+pop2020 <- popdata %>%
+  filter(Time==2020) %>%
+  group_by(PA, SZ, AG) %>%
+  summarise(POP = sum(Pop)) %>%
+  ungroup() %>%
+  pivot_wider(names_from = AG, 
+              values_from = POP) %>%
+  mutate(YOUNG = rowSums(.[3:6])+ rowSums(.[12])) %>%
+  mutate(ECONOMYACTIVE = rowSums(.[7:11]) + rowSums(.[13:15])) %>%
+  mutate(AGED=rowSums(.[16:21])) %>%
+  mutate(TOTAL=rowSums(.[3:21])) %>%  
+  mutate(DEPENDENCY = (YOUNG + AGED)/ ECONOMYACTIVE) %>%
+  select(PA, SZ, YOUNG, ECONOMYACTIVE, AGED, TOTAL, DEPENDENCY) %>%
+  mutate(across(PA:SZ, toupper))
+  
+  
+```
+
+Join the attribute data to the `mpsz` data by SZ. In the previous step, we manipulated this variable to be uppercase to match with the `mpsz` file.
+
+```{r}
+mpsz_pop2020 <- left_join(x=mpsz,
+                          y=pop2020,
+                          by= c("SUBZONE_N" = "SZ"))
+```
+
+## Choropleth Maps
+
+### Basic Map
+
+A basic choropleth map with no customisations can be created using the `qtm` function. It uses a number of defaults which may not always be useful depending on the dataset. In the example below, the pretty breaks result in a map which is not informative because of the distribution of dependency ratio.
+
+```{r}
+tmap_mode("plot")
+qtm(mpsz_pop2020, 
+    fill = "DEPENDENCY")
+```
+
+### More Customisations
+
+`tmap` also allows us to customise each aspect of the map more finely. The code chunk below uses the same dependency ratio data as the above map but splits by quantiles instead to show the distribution more clearly. Other customisations create map elements like title, map scale, map grid and compass.
+
+```{r}
+tm_shape(mpsz_pop2020)+
+  tm_fill("DEPENDENCY", 
+          style = "quantile", 
+          palette = "Blues",
+          title = "Dependency ratio") +
+  tm_layout(main.title = "Distribution of Dependency Ratio by planning subzone",
+            main.title.position = "center",
+            main.title.size = 1.2,
+            legend.height = 0.45, 
+            legend.width = 0.35,
+            frame = TRUE) +
+  tm_borders(alpha = 0.5) +
+  tm_compass(type="8star", size = 2) +
+  tm_scale_bar() +
+  tm_grid(alpha =0.2) +
+  tm_credits("Source: Planning Sub-zone boundary from Urban Redevelopment Authorithy (URA)\n and Population data from Department of Statistics DOS", 
+             position = c("left", "bottom"))
+```

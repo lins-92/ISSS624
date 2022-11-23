@@ -62,11 +62,18 @@ head(mpsz, n=5) %>%
   kable_styling()
 ```
 
-
 We can also create simple plots of spatial data using the base R `plot` function. We can use indexing to indicate the variable to group by.
 
 ```{r}
 plot(mpsz["CA_IND"])
+```
+
+```{r}
+plot(cyclingpath["CYL_PATH_C"])
+```
+
+```{r}
+plot(preschool)
 ```
 
 ### Fixing the Projections
@@ -253,7 +260,7 @@ tm_shape(mpsz_pop2020)+
              position = c("left", "bottom"))
 ```
 
-There are also other styles to create breaks. The map below uses the hclust method to create breaks and the number of breaks is increased to 10. Although the number of breaks is increased, the map is not necessarily more informative than the previous map using 5 quantile breaks. 
+There are also other styles to create breaks. The map below uses the hclust method to create breaks and the number of breaks is increased to 10. Although the number of breaks is increased, the map is not necessarily more informative than the previous map using 5 quantile breaks.
 
 ```{r}
 tm_shape(mpsz_pop2020)+

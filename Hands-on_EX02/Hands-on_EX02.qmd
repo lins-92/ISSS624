@@ -1,0 +1,413 @@
+---
+title: "Hands-on Exercise 2"
+editor: visual
+---
+
+# Global and Local Measures for Spatial Autocorrelation
+
+### What is spatial autocorrelation?
+
+Spatial autocorrelation measures the degree to which one object is similar to other nearby objects. Spatial autocorrelation is an important consideration in geospatial analysis because it means that observations are not independent of each other.
+
+One of the common measures of spatial autocorrelation is Moran's I. It takes a value between -1 and 1. The closer the value is to 1, the more clustered the dependent variable is spatially; the closer the value is to 01, the more dispersed the dependent variable is.
+
+![Adapted from https://www.statology.org/morans-i/](images/morans.png)
+
+This exercise is to practice how to computing spatiial autocorrelation.
+
+### Loading Packages
+
+We will use the following packages:
+
+-   `sf`: import geospatial datasets
+
+-   `tidyverse`: manipulate aspatial data
+
+-   `spdep`: compute spatial weights and autocorrelation
+
+-   `tmap`: plot maps
+
+```{r, include=FALSE}
+packages = c('sf', 'tidyverse', 'spdep', 'tmap', 'kableExtra')
+for (p in packages){
+  if(!require(p, character.only = T)){
+    install.packages(p)
+  }
+  library(p,character.only = T)
+}
+```
+
+### Importing and Preparing Data
+
+This dataset contains the administrative boundaries of the Hunan province in China.
+
+```{r}
+hunan <- st_read(dsn="data/geospatial",
+                 layer="Hunan")
+
+```
+
+```{r}
+glimpse(hunan)
+
+```
+
+```{r}
+head(hunan, n=5) %>%
+  kable() %>%
+  kable_styling()
+```
+
+```{r}
+tm_shape(hunan) +
+  tm_polygons() +
+  tm_text("County", size=0.5)
+```
+
+Now let's load the attribute data. This dataset contains some economic indicators of counties in the Hunan province.
+
+```{r}
+econ <- read_csv("data/aspatial/Hunan_2012.csv")
+glimpse(econ)
+```
+
+```{r}
+head(econ, n=5) %>%
+  kable() %>%
+  kable_styling()
+
+```
+
+Join the attribute data to the geospatial data using `left_join`.
+
+```{r}
+hunan <- left_join(x=hunan,
+                   y=econ,
+                   by="County")
+```
+
+### Visualising GDP Per Capita
+
+First, let's visualise GDP per capita of the different counties in Hunan province using a choropleth map.
+
+```{r}
+equal <- tm_shape(hunan) +
+  tm_fill("GDPPC",
+          n=5,
+          style="equal") +
+  tm_borders(alpha = 0.5) +
+  tm_layout(main.title = "Equal interval")
+
+quantile <- tm_shape(hunan) +
+  tm_fill("GDPPC",
+          n=5,
+          style="quantile") +
+  tm_borders(alpha = 0.5) +
+  tm_layout(main.title = "Quantile")
+
+tmap_arrange(equal, 
+             quantile, 
+             asp=1, 
+             ncol=2)
+
+```
+
+## Global Spatial Autocorrelation
+
+To compute global spatial autocorrelation, we first need to compute a spatial weight matrix. The `poly2nb()` function from the `spdep` package is used to compute a contiguity matrix using the queen's method. This gives a basic weight matrix to indicate if areas are contiguous with each other.
+
+```{r}
+wm_q <- poly2nb(hunan, 
+                queen=TRUE)
+summary(wm_q)
+```
+
+Contiguity matrices are typically not used in raw form. The matrix is often row standardised by dividing each value by the sum of neighbours in a row such that each neighbour of an area applies an equal weightage. Each row will sum up to 1 (all rows are equal).
+
+The function used is the nb2listw(). The options for style are :
+
+-   "W" row standardised (each row sums to 1)
+
+-   "B" binary
+
+-   "C" globally standardised (weight = total no of areas/total links)
+
+-   "U" unequal (all weights sum to 1)
+
+-   "minmax" standardised by minimum and maximum of row
+
+-   "S" variance standardised
+
+```{r}
+rswm_q <- nb2listw(wm_q, 
+                   style="W", 
+                   zero.policy = TRUE)
+rswm_q
+```
+
+### Moran's I
+
+Now we can finally conduct the Moran's I test with the `moran.test()` function from `spdep`.
+
+```{r}
+moran.test(hunan$GDPPC,
+           rswm_q,
+           zero.policy = TRUE,
+           na.action=na.omit)
+```
+
+The null hypothesis of the Moran's I test is that the data is randomly distributed (ie Moran's I=0). In the above example, the null hypothesis is that the data is clustered (ie Moran's I\>0). At 5% significance level, we reject the null hypothesis and accept the alternative hypothesis that there is spatial clustering of GDP per capita. The computed Moran's I is 0.3, indicating that there is some degree of spatially clustering.
+
+### Monte Carlo Moran's I
+
+The Moran's I test assumes that the variable follows a normal distribution and is a random sample. When we are unsure of the underlying assumption of the variable, we can use Monte Carlo Moran's I test instead. This test involves repeated random sampling from the dataset to estimate the distribution of Moran's I if the variable were a random distributed across space, then compares the computed Moran's I from the full dataset to this distribution.
+
+```{r}
+set.seed=1234
+
+bperm <- moran.mc(hunan$GDPPC,
+                  rswm_q,
+                  nsim=999,
+                  zero.policy=TRUE,
+                  na.action=na.omit)
+
+bperm
+```
+
+The null hypothesis of the Moran's I test is that the data is randomly distributed or perfectly dispersed (ie Moran's I\<=0). In the above example, the null hypothesis is that the data is clustered (ie Moran's I\>0). At 5% significance level, we reject the null hypothesis and accept the alternative hypothesis that there is spatial clustering of GDP per capita. The computed Moran's I is 0.3, indicating that there is some degree of spatially clustering.
+
+We can use the simulated data to plot the probability distribution of Moran's I.
+
+```{r}
+mcdata <- as.tibble(bperm$res)
+
+ggplot(data=mcdata) +
+  geom_histogram(aes(x=value), 
+                 colour="black",
+                 fill="light blue", bins=30) +
+  geom_vline(xintercept=0,
+             colour="black",
+             linetype="dashed") +
+  geom_vline(xintercept=mean(mcdata$value),
+             colour="red") +
+  annotate(geom = "text",
+           label=paste0("mean =\n",
+                        signif(mean(mcdata$value), 3)),
+           x=-0.043,
+           y=139) +
+  ylim(0, 150) +
+  labs(title="Simulated Moran's I",
+       x="Simulated Moran's I", 
+       y="Frequency") +
+  theme_bw()
+
+```
+
+This is the sampling distribution of Moran's I, which is approximately a normal distribution. The null hypothesis is the Moran's I \<=0 (although the sample mean is actually slightly less than 0). If the null hypothesis is true, it is unlikely to get values more than 0. From the distribution, we can see that it is unlikely to get the computed Moran's I of 0.3 if the null hypothesis hold true. As such, we can reject the null hypothesis and conclude that there is clustering observed in the GDP per capita in Hunan.
+
+### Geary's C Test
+
+Geary's C test is another method to measure spatial autocorrelation. The `geary.test()` function from the `spdep` package is used to perform this test. The Geary C test statistic lies between 0 and 3 with 0 meaning perfect clustering, 1 meaning random distribution and 3 meaning perfect dispersion.
+
+```{r}
+geary.test(hunan$GDPPC, 
+           listw=rswm_q)
+```
+
+The null hypothesis is that Geary's C \>=1 (randomly distributed or perfected dispersed). At 5% significance level, we can reject the null hypothesis and conclude that C \<1. The value of 0.69 indicates that GDP per capita is spatially clustered.
+
+### Spatial Correlogram
+
+A spatial correlogram can be used to visualise patterns of spatial autocorrelation with increasing lags (distance). Logically, correlation should decrease with more lags. Increasing lags means that we are testing if further locations are correlated with an area. The y-axis is usually Moran's I or Geary's C.
+
+The code chunk below generates a spatial correlogram using Moran's I. As the order of contiguity increases, GDP per capita is less correlated, which is to be expected.
+
+```{r}
+MI_corr <- sp.correlogram(wm_q, 
+                          hunan$GDPPC, 
+                          order=6, 
+                          method="I", 
+                          style="W")
+plot(MI_corr)
+```
+
+We can also view the detail test statistics to check significance of results.
+
+```{r}
+print(MI_corr)
+```
+
+The code chunk below generates a spatial correlogram using Geary's C. As the order of contiguity increases, GDP per capita is less correlated.
+
+```{r}
+GC_corr <- sp.correlogram(wm_q, 
+                          hunan$GDPPC, 
+                          order=6, 
+                          method="C", 
+                          style="W")
+plot(GC_corr)
+```
+
+```{r}
+print(GC_corr)
+```
+
+## Local Spatial Autocorrelation
+
+Local indicators spatial autocorrelation (LISA) are used to evaluate the existence of clusters and outliers in the spatial arrangement of a variable. The difference between global and local indicators of spatial autocorrelation is that local indicators are computed for each observation. Each value measures the extent of significant spatial clustering of similar values around that observation.
+
+### Local Moran's I
+
+Local Moran's I can be computed using the `localmoran()` function. The first line of the code creates a list of the indices by alphabetical order of county name. It will be used later to order the local Moran's I test output.
+
+```{r}
+fips <- order(hunan$County)
+
+localMI <- localmoran(hunan$GDPPC,
+                      rswm_q)
+
+head(localMI)
+```
+
+`localmoran()` outputs the following:
+
+-   Ii: the local Moran\'s I statistics
+
+-   E.Ii: the expectation of local Moran statistic under the randomisation hypothesis
+
+-   Var.Ii: the variance of local Moran statistic under the randomisation hypothesis
+
+-   Z.Ii: the standard deviation of local Moran statistic
+
+-   Pr(): the p-value of local Moran statistic
+
+In this case, the null hypotheses are that GDP per capita are randomly distributed around each area. The default is the two-sided test shown, but this can be adjusted in the arguments of the `localmoran()` function.
+
+The following code chunk prints all the local Moran's I statistics:
+
+```{r}
+printCoefmat(data.frame(localMI[fips,], 
+                        row.names=hunan$County[fips]), 
+             check.names=FALSE)
+```
+
+### Mapping Local Moran's I
+
+To map the local Moran's I, first we need to join it to the spatial data.
+
+```{r}
+hunan.localMI <- cbind(hunan,localMI) %>%
+  rename(Pr.Ii = Pr.z....E.Ii..)
+```
+
+Now, we can create the map.
+
+```{r}
+localMI.map <- tm_shape(hunan.localMI) +
+  tm_fill(col = "Ii", 
+          style="pretty",
+          palette ="RdBu",
+          title="Local Moran Statistics") +
+  tm_borders(alpha=0.5)
+
+localMI.map
+```
+
+The map seems to indicate that there is a high degree of clustering in some of the north-eastern counties. Some counties have low local Moran's I, indicating that GDP per capita in surrounding counties are dispersed.
+
+However, this map alone is not enough to conclude if there is not is no clustering of values. We need the p-values as well to evaluate whether the local Moran's I statistic for each area is significant.
+
+```{r}
+pvalue.map <- tm_shape(hunan.localMI) +
+  tm_fill(col = "Pr.Ii", 
+          breaks=c(-Inf, 0.001, 0.01, 0.05, 0.1, Inf),
+          palette ="-Blues",
+          title="Local Moran's I p-values") +
+  tm_borders(alpha=0.5)
+
+tmap_arrange(localMI.map, pvalue.map,
+             asp=1, ncol=2)
+```
+
+Using these 2 maps, we can conclude that there is indeed clustering in some of the north eastern counties. However, the Moran's I statistic of counties with high degree dispersion indicated in the first map were not significant and hence we cannot reject the null hypothesis that values were randomly.
+
+### Moran Scatterplot
+
+The Moran scatterplot is an illustration of the relationship between the values of the chosen attribute at each location and the average value of the same attribute at neighboring locations. We can plot this using the `moran.plot()` function.
+
+```{r}
+moran.plot(hunan$GDPPC,
+           rswm_q,
+           labels=as.character(hunan$County),
+           xlab="GDP per capita",
+           ylab="Spatially lagged GDP per capita")
+```
+
+The scatterplot is split into 4 quadrants. The x-axis is the actual GDP per capita and the y-axis is the spatially lagged GDP per capita. A higher spatially lagged GDP per capita means the surrounding neighbours have high GDP per capita.
+
+Upper right: Contains observations with high spatially lagged and actual GDP per capita, indicating positive autocorrelation and clustering of high values.
+
+Lower left: Contains low spatially lagged and actual GDP per capita, indicating positive autocorrelation and clustering of low values.
+
+Upper left: High spatially lagged GDP per capita and low actual GDP per capita, indicating negative autocorrelation. These observations are outliers with low GDP per capita among neighbours with high GDP per capita.
+
+Lower right: Low spatially lagged GDP per capita and high actual GDP per capita, indicating negative autocorrelation. These observations are outliers with high GDP per capita among neighbours with low GDP per capita.
+
+![](images/scatterquad.png){width="900"}
+This scatterplot still does not take into account whether the values are statistically significant so we still need to refine this further.
+
+### LISA Cluster Map
+
+First, we center GDP per capita and local Moran's I around their means. We can then assign each observation to a quadrant depending on whether it is above or below mean GDP per capita and above or below the mean Moran's I. We also create a quadrant 0 for observations that are not statistically significant. Note that the logical statement for quadrant 0 must be the first as we want it to be prioritised over the other criteria.
+
+```{r}
+hunan.localMI <- hunan.localMI %>%
+  mutate(C_mI = Ii - mean(Ii)) %>%
+  mutate(DV = GDPPC- mean(GDPPC)) %>%
+  mutate(quadrant = case_when(
+    Pr.Ii >0.05 ~0,
+    DV>0 & C_mI>0 ~4,
+    DV<0 & C_mI<0 ~1,
+    DV<0 & C_mI>0 ~2,
+    DV>0 & C_mI<0 ~3))
+```
+
+We can now build the LISA map:
+
+```{r}
+colors <- c("#ffffff", "#2c7bb6", "#abd9e9", "#fdae61", "#d7191c")
+clusters <- c("insignificant", "low-low", "low-high", "high-low", "high-high")
+
+LISAmap <- tm_shape(hunan.localMI) +
+  tm_fill(col="quadrant",
+          style="cat",
+          palette = colors,
+          label = clusters,
+          popup.vars=c("")) +
+  tm_view(set.zoom.limits=c(11,17))+
+  tm_borders(alpha=0.5) +
+  tm_layout(main.title = "LISA Clustering")
+
+LISAmap
+```
+
+For proper analysis, we should actual GDp per capita next to the LISA map.
+
+```{r}
+tmap_arrange(quantile, LISAmap,
+             asp=1, ncol=2)
+```
+
+From the maps, we can see that there is a cluster of high GDP per capita counties in the northeast.
+
+### Hot Spot and Cold Spot Analysis
+
+### References
+
+https://gisgeography.com/spatial-autocorrelation-moran-i-gis/
+
+https://medium.com/locale-ai/spatial-autocorrelation-how-spatial-objects-affect-other-nearby-spatial-objects-e05fa7d43de8
+
+https://www.statology.org/morans-i/
+
+https://storymaps.arcgis.com/stories/5b26f25bb81a437b89003423505e2f71

@@ -401,7 +401,7 @@ From the maps, we can see that there is a cluster of high GDP per capita countie
 
 ### Hot Spot and Cold Spot Analysis
 
-Local spatial statistics can also be used to detect hot spots and cold spots. One such measure is Getis and Ord\'s G-statistics. It examines neighbours within a defined proximity to identify where either high or low values clutser spatially.
+Local spatial statistics can also be used to detect hot spots and cold spots. One such measure is Getis and Ord's G-statistics. It examines neighbours within a defined proximity to identify where either high or low values clutser spatially.
 
 Instead of contiguous neighbours, it uses neighbours with a specified distance. As such, we need to find the centroids of each county to develop a distance spatial weight matrix. The following code chunk creates an object with longitude and latitudes extracted using the `st_centroid()` function.
 
@@ -471,7 +471,7 @@ tmap_arrange(gdppc, Gimap, asp=1, ncol=2)
 
 We can see that there is a hotspot of high GDP per capita in the northeast of Hunan province.
 
-### Gi with Adaptive Weighting 
+### Gi with Adaptive Weighting
 
 The previous section computed Gi using a fixed weighting scheme where the distance is fixed and the number of neighbours considered depends on density of neighbours. Another method to compute Gi is to use an adaptive weighting scheme that considers a fixed number of nearest neighbours. The size of the neighbourhood considered will depend on the density of points.
 
@@ -522,7 +522,7 @@ tmap_arrange(gdppc,
 
 Under the adaptive weightage scheme, there are more non-zero links. We can infer that in general a larger neighbourhood is considered for each county. This is likely especially so for counties on the border. This could explain the additional hotspot on the northeastern border. There are also fewer coldspots compared to the fixed scheme.
 
-### References
+## References
 
 <https://gisgeography.com/spatial-autocorrelation-moran-i-gis/>
 

@@ -271,7 +271,7 @@ head(localMI)
 
 `localmoran()` outputs the following:
 
--   Ii: the local Moran\'s I statistics
+-   Ii: the local Moran's I statistics
 
 -   E.Ii: the expectation of local Moran statistic under the randomisation hypothesis
 
@@ -353,8 +353,7 @@ Upper left: High spatially lagged GDP per capita and low actual GDP per capita, 
 
 Lower right: Low spatially lagged GDP per capita and high actual GDP per capita, indicating negative autocorrelation. These observations are outliers with high GDP per capita among neighbours with low GDP per capita.
 
-![](images/scatterquad.png){width="900"}
-This scatterplot still does not take into account whether the values are statistically significant so we still need to refine this further.
+![](images/scatterquad.png){width="900"} This scatterplot still does not take into account whether the values are statistically significant so we still need to refine this further.
 
 ### LISA Cluster Map
 
@@ -398,16 +397,137 @@ tmap_arrange(quantile, LISAmap,
              asp=1, ncol=2)
 ```
 
-From the maps, we can see that there is a cluster of high GDP per capita counties in the northeast.
+From the maps, we can see that there is a cluster of high GDP per capita counties in the northeast. There are 2 counties in the low-low quadrant near the high cluster. From the map on the left, we can see that at least one of those counties has GDP per capita in the 41-60 percentile. This likely indicates that the mean is in skewed because some counties have very high GDP per capita. Median may be a better measure to use when centering the data.
 
 ### Hot Spot and Cold Spot Analysis
 
+Local spatial statistics can also be used to detect hot spots and cold spots. One such measure is Getis and Ord\'s G-statistics. It examines neighbours within a defined proximity to identify where either high or low values clutser spatially.
+
+Instead of contiguous neighbours, it uses neighbours with a specified distance. As such, we need to find the centroids of each county to develop a distance spatial weight matrix. The following code chunk creates an object with longitude and latitudes extracted using the `st_centroid()` function.
+
+```{r}
+longitude <- map_dbl(hunan$geometry, ~st_centroid(.x)[[1]])
+latitude <- map_dbl(hunan$geometry, ~st_centroid(.x)[[2]])
+coords <- cbind(longitude, latitude)
+```
+
+Next, we need to determine the maximum distance to consider counties as neighbours in the spatial matrix. The following code chunk uses `knearneigh()` to find the k nearest neighbours to each centroid (k=1 by default) and stores the indices of the nearest neighbours as list k1. The second line of code uses `nbdists()` to find the distance between each pair of neighbours . `unlist()` is needed to extract the distances from the list object. Lastly, we get some summary statistics on distance to nearest neighbours.
+
+```{r}
+k1 <- knn2nb(knearneigh(coords))
+k1dists <- unlist(nbdists(k1, coords, longlat = TRUE))
+summary(k1dists)
+```
+
+The furtherest nearest neighbour is 61.79km away, so using this as the maximum distance will ensure that each county will have at least one neighbour.
+
+The following code chunk creates a distance weight matrix (list of the the indices of neighbours within 62km radius of each centroid).
+
+```{r}
+wm_d62 <- dnearneigh(coords, 0, 62, longlat = TRUE)
+wm_d62
+```
+
+Then, we convert the matrix to binary format with the `nb2listw()` function.
+
+```{r}
+wm62_lw <- nb2listw(wm_d62, style = 'B')
+summary(wm62_lw)
+```
+
+### Computing Gi Statistics
+
+The localG() function is used to compute the G statistic of each county with respect to GDP per capita.
+
+```{r}
+fips <- order(hunan$County)
+gi.fixed <- localG(hunan$GDPPC, wm62_lw)
+gi.fixed
+```
+
+It outputs a list of the G statistic for each county (in terms of a z-value). High positive values indicate the posibility of a local cluster of high values of the variable being analysed, very low relative values a similar cluster of low values.
+
+We then join the G statistics to the base dataset.
+
+```{r}
+hunan.gi <- cbind(hunan, as.matrix(gi.fixed)) %>%
+  rename(gstat_fixed = as.matrix.gi.fixed.)
+```
+
+### Mapping Gi to Show Hot and Cold Spots
+
+```{r}
+gdppc <- qtm(hunan, "GDPPC")
+
+Gimap <-tm_shape(hunan.gi) +
+  tm_fill(col = "gstat_fixed", 
+          style = "pretty",
+          palette="-RdBu",
+          title = "local Gi") +
+  tm_borders(alpha = 0.5)
+
+tmap_arrange(gdppc, Gimap, asp=1, ncol=2)
+```
+
+We can see that there is a hotspot of high GDP per capita in the northeast of Hunan province.
+
+### Gi with Adaptive Weighting 
+
+The previous section computed Gi using a fixed weighting scheme where the distance is fixed and the number of neighbours considered depends on density of neighbours. Another method to compute Gi is to use an adaptive weighting scheme that considers a fixed number of nearest neighbours. The size of the neighbourhood considered will depend on the density of points.
+
+```{r}
+k8 <- knn2nb(knearneigh(coords,
+                        k=8))
+k8
+```
+
+```{r}
+k8_lw <- nb2listw(k8, style = 'B')
+summary(k8_lw)
+```
+
+Now to recompute Gi using the new weights matrix and generate the new map.
+
+```{r}
+fips <- order(hunan$County)
+gi.adaptive <- localG(hunan$GDPPC, k8_lw)
+
+hunan.gi <- cbind(hunan.gi, as.matrix(gi.adaptive)) %>%
+  rename(gstat_adaptive = as.matrix.gi.adaptive.)
+```
+
+```{r}
+gdppc<- qtm(hunan, "GDPPC")
+
+Gimap1 <- tm_shape(hunan.gi) + 
+  tm_fill(col = "gstat_fixed", 
+          style = "pretty", 
+          palette="-RdBu", 
+          title = "local Gi (Fixed)") + 
+  tm_borders(alpha = 0.5)
+
+Gimap2 <- tm_shape(hunan.gi) + 
+  tm_fill(col = "gstat_adaptive", 
+          style = "pretty", 
+          palette="-RdBu", 
+          title = "local Gi (Adaptive)") + 
+  tm_borders(alpha = 0.5)
+
+tmap_arrange(gdppc, 
+             Gimap1,
+             Gimap2,
+             asp=1, 
+             ncol=3)
+```
+
+Under the adaptive weightage scheme, there are more non-zero links. We can infer that in general a larger neighbourhood is considered for each county. This is likely especially so for counties on the border. This could explain the additional hotspot on the northeastern border. There are also fewer coldspots compared to the fixed scheme.
+
 ### References
 
-https://gisgeography.com/spatial-autocorrelation-moran-i-gis/
+<https://gisgeography.com/spatial-autocorrelation-moran-i-gis/>
 
-https://medium.com/locale-ai/spatial-autocorrelation-how-spatial-objects-affect-other-nearby-spatial-objects-e05fa7d43de8
+<https://medium.com/locale-ai/spatial-autocorrelation-how-spatial-objects-affect-other-nearby-spatial-objects-e05fa7d43de8>
 
-https://www.statology.org/morans-i/
+<https://www.statology.org/morans-i/>
 
-https://storymaps.arcgis.com/stories/5b26f25bb81a437b89003423505e2f71
+<https://storymaps.arcgis.com/stories/5b26f25bb81a437b89003423505e2f71>

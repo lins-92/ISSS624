@@ -41,13 +41,13 @@ The water point data is collected by the [Water Point Data Exchange (WPdx)](http
 wp <- read_csv("data/WPdx_plus_Nigeria.csv")
 ```
 
-Due to the size of the dataset, it has already been pre-processed to keep only entries in Nigeria and some unused variables have been removed. The following code was used to pre-process the raw data file "Water_Point_Data_Exchange\_-\_Plus\_\_WPdx\_\_.csv" from the website but is not run on this page (raw data file is also not found on GitHub).
+Due to the size of the dataset, it has already been pre-processed to keep only entries in Nigeria and some unused variables have been removed. The following code was used to pre-process the raw data file "WPdx_plus_full.csv" from the website but is not run on this page (raw data file is also not found on GitHub).
 
 ```{r}
 #| eval: false
-wp <- read_csv("data/Water_Point_Data_Exchange_-_Plus__WPdx__.csv") %>%
+wp <- read_csv("data/WPdx_plus_full.csv") %>%
   filter(`#clean_country_name`=="Nigeria") %>%
-  select(c(3:4, 13:14, 22)) %>%
+  select(c(3:4, 22)) %>%
   write_csv("data/WPdx_plus_Nigeria.csv")
   
 ```
@@ -98,13 +98,12 @@ Let's visualise the proportions of functionality of the waterpoints. On the whol
 freq(wp, input="status")
 ```
 
-Now, I convert the aspatial data into geospatial point data from the latitude and longitude data using the `st_as_sf()` function. The original GCS of the data is WGS1984 (EPSG:4326) from the data dictionary. We need to project it to the EPSG:26391 CRS.
+Now, I convert the aspatial data into geospatial point data from the latitude and longitude data using the `st_as_sf()` function. The original GCS of the data is WGS1984 (EPSG:4326) as stated in the data dictionary.
 
 ```{r}
 wp_sf <- st_as_sf(wp, 
                   coords = c("lon_deg", "lat_deg"),
-                  crs=4326) %>%
-  st_transform(crs = 26391)
+                  crs=4326) 
 ```
 
 ### Loading Administrative Boundary Data
@@ -114,13 +113,6 @@ I will also use the Nigeria Level-2 Administrative Boundary (also known as Local
 ```{r}
 adm_bound <- st_read(dsn="data",
                layer="geoBoundaries-NGA-ADM2")
-```
-
-The administrative boundary dataset also needs to be projected to the EPSG:26391 CRS.
-
-```{r}
-adm_bound <- adm_bound %>%
-  st_transform(crs = 26391)
 ```
 
 ```{r}
@@ -141,9 +133,9 @@ tm_shape(wp_sf) +
 
 ## 2 Status of Waterpoints
 
-Now I have 2 geospatial datasets: a point dataset with waterpoint locations and a polygon data with administrative boundaries. I still need to count the number of waterpoints by status for each administrative area. Although the `clean_adm2` variable in the waterpoint data should correspond to the administrative area the waterpoint belongs to, it is more accurate to use the GPS coordinates.
+Now I have 2 geospatial datasets: a point dataset with waterpoint locations and a polygon data with administrative boundaries. I still need to count the number of waterpoints by status for each administrative area.
 
-I will use the `st_join()` function to do a spatial join to relate the administrative area names to each waterpoint by its location. The join=st_intersects() argument tells R the type of spatial join to use.
+I will use the `st_join()` function to do a spatial join to relate the administrative area names to each waterpoint by its location. The `join=st_intersects()` argument tells R the type of spatial join to use. Note that both datasets must have the same projection (preferably WGS1984 for this step), which is why we have not transformed either dataset yet.
 
 ```{r}
 wp_named <- st_join(x = wp_sf,
@@ -197,14 +189,15 @@ head(prop, n=5) %>%
   kable_styling()
 ```
 
-Now, we use `left_join()` to relate the counts to the administrative boundary geospatial data. We also need to replace any na counts with 0 and add a new variable for total number of waterpoints.
+Now, we use `left_join()` to relate the counts to the administrative boundary geospatial data. As this is the final dataset we will be working on, we can transform the projection to EPSG:26391. We also need to replace any na counts with 0 and add a new variable for total number of waterpoints.
 
 ```{r}
 adm_wp <- left_join(x=adm_bound,
                     y=prop,
                     by="shapeID") %>%
   mutate(across(c(6:8), ~replace_na(.x, 0))) %>%
-  mutate(Total = Functional + `Non-functional` + Unknown)
+  mutate(Total = Functional + `Non-functional` + Unknown) %>%
+  st_transform(crs = 26391)
 ```
 
 Finally, we can plot the number of waterpoints by status in each administrative area.
@@ -239,17 +232,15 @@ tm_shape(adm_wp)+
             legend.hist.width = 1.1)
 ```
 
- From this map, we can see that the north-east and south of Nigeria tend to have fewer waterpoints. More than 60% of administrative areas have les than 200 waterpoints. As we do not know the population or water demand of each administrative area, it is difficult to say which areas are water stressed or need additional water infrastructure.
- 
+From this map, we can see that the north-east and south of Nigeria tend to have fewer waterpoints. More than 60% of administrative areas have les than 200 waterpoints. As we do not know the population or water demand of each administrative area, it is difficult to say which areas are water stressed or need additional water infrastructure.
+
 The spatial distribution of waterpoint supply shows some relation to the climate classification and population distribution. The south of Nigeria has higher rainfall which could mean less reliance on man-made waterpoints and thus fewer waterpoints.Area with higher population also tend to have more waterpoints.
 
-:::{layout="[62,38]"}
+::: {layout="[62,38]"}
 ![Koppen-Geiger climate classification map for Nigeria. Source: Beck, H. E., et al. (2018)](images/Koppen-Geiger-climate-classification-map-for-Nigeria-Source-Beck-H-E-et-al-2018.png)
 
 ![Population density in Nigeria. Source: Wikimedia Commons](images/1024px-Nigeria_lato.svg.png)
 :::
-
-
 
 ```{r}
 tm_shape(adm_wp)+

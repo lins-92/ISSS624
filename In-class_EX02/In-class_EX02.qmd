@@ -153,7 +153,7 @@ nga_wp <- nga %>%
     st_intersects(nga, wpt_unknown)))
 ```
 
-Next, we compute the proportions of functional and non-functional waterpoints for each area. We can also perform the transformation now since we have done the st_intersects() already. Save the file.
+Next, we compute the proportions of functional and non-functional waterpoints for each area. We can also perform the transformation now since we have done the `st_intersects()` already. Save the file.
 
 ```{r}
 nga_wp <- nga_wp %>%

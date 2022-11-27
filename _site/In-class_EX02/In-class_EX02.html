@@ -410,7 +410,7 @@ of ggplot2 3.3.4.
 <span id="cb20-8"><a href="#cb20-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="st">`</span><span class="at">wpt unknown</span><span class="st">`</span> <span class="ot">=</span> <span class="fu">lengths</span>(</span>
 <span id="cb20-9"><a href="#cb20-9" aria-hidden="true" tabindex="-1"></a>    <span class="fu">st_intersects</span>(nga, wpt_unknown)))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<p>Next, we compute the proportions of functional and non-functional waterpoints for each area. We can also perform the transformation now since we have done the st_intersects() already. Save the file.</p>
+<p>Next, we compute the proportions of functional and non-functional waterpoints for each area. We can also perform the transformation now since we have done the <code>st_intersects()</code> already. Save the file.</p>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb21"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>nga_wp <span class="ot">&lt;-</span> nga_wp <span class="sc">%&gt;%</span></span>
 <span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">pct_functional =</span> <span class="st">`</span><span class="at">wpt functional</span><span class="st">`</span><span class="sc">/</span><span class="st">`</span><span class="at">total wpt</span><span class="st">`</span>) <span class="sc">%&gt;%</span></span>

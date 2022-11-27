@@ -1,0 +1,356 @@
+---
+title: "Take-Home Exercise 01"
+editor: visual
+---
+
+# Water Points in Nigeria
+
+Geospatial analytics hold tremendous potential to address complex problems facing society. The purpose of this study is to understand the spatial patterns of non-functional water points in Nigeria.
+
+## 1.0 Introduction
+
+### Loading Packages
+
+We will use the following packages:
+
+-   `sf`: import geospatial datasets
+
+-   `tidyverse`: manipulate aspatial data
+
+-   `spdep`: compute spatial weights and autocorrelation
+
+-   `tmap`: plot maps
+
+-   `funModeling`: quick exploratory data analysis
+
+```{r, include=FALSE}
+packages = c('sf', 'tidyverse', 'spdep', 'tmap', 'funModeling', 'kableExtra')
+for (p in packages){
+  if(!require(p, character.only = T)){
+    install.packages(p)
+  }
+  library(p,character.only = T)
+}
+```
+
+### Loading and Preparing Waterpoint Dataset
+
+The water point data is collected by the [Water Point Data Exchange (WPdx)](https://www.waterpointdata.org/about/) whose goal is to improve water access to rural communities by providing data to enable data-driven decision making. The dataset can be found [here](https://data.waterpointdata.org/dataset/Water-Point-Data-Exchange-Plus-WPdx-/eqje-vguj/data) and the data dictionary [here](https://www.waterpointdata.org/wp-content/uploads/2020/11/WPDx_Standardized_Hashtags_11-11-2020.pdf). The data is in csv format with latitude and longitude information.
+
+```{r}
+wp <- read_csv("data/WPdx_plus_Nigeria.csv")
+```
+
+Due to the size of the dataset, it has already been pre-processed to keep only entries in Nigeria and some unused variables have been removed. The following code was used to pre-process the raw data file "Water_Point_Data_Exchange\_-\_Plus\_\_WPdx\_\_.csv" from the website but is not run on this page (raw data file is also not found on GitHub).
+
+```{r, eval=FALSE}
+#not run
+wp <- read_csv("data/Water_Point_Data_Exchange_-_Plus__WPdx__.csv") %>%
+  filter(`#clean_country_name`=="Nigeria") %>%
+  select(c(3:4, 13:14, 22)) %>%
+  write_csv("data/WPdx_plus_Nigeria.csv")
+  
+```
+
+```{r}
+glimpse(wp)
+```
+
+We can see that the variable names have some special characters which is not ideal. There are also a lot of NA values in the variable of interest (#status_clean). The following code chunk cleans the variable names and replaces the NA values with "Unknown".
+
+```{r}
+wp <- wp %>%
+  rename_with(~str_replace(.x, "#", "")) %>%
+  mutate(status_clean=replace_na(status_clean, "Unknown"))
+```
+
+Let's check the values of status_clean.
+
+```{r}
+wp %>%
+  group_by(status_clean) %>%
+  summarise(n=n()) %>%
+  ungroup() %>%
+  kable() %>%
+  kable_styling()
+```
+
+We can see that the categories are more detailed than we need. To study the proportion of functional and non-functional waterpoints, we can combine the categories into 3 categories: "Functional", "Non-functional" and "unknown"
+
+```{r}
+wp <- wp %>%
+  mutate(status = case_when(
+    status_clean %in% c("Abandoned/Decommissioned", 
+                        "Abandoned",
+                        "Non-Functional",
+                        "Non functional due to dry season",
+                        "Non-Functional due to dry season") ~ "Non-functional",
+    status_clean == "Unknown" ~ "Unknown",
+    status_clean %in% c("Functional", 
+                        "Functional but not in use",
+                        "Functional but needs repair") ~ "Functional"
+  ))
+```
+
+Let's visualise the proportions of functionality of the waterpoints. On the whole, only 55% of waterpoints are functional.
+
+```{r}
+freq(wp, input="status")
+```
+
+Now, I convert the aspatial data into geospatial point data from the latitude and longitude data using the `st_as_sf()` function. The original GCS of the data is WGS1984 (EPSG:4326) from the data dictionary. We need to project it to the EPSG:26391 CRS.
+
+```{r}
+wp_sf <- st_as_sf(wp, 
+                  coords = c("lon_deg", "lat_deg"),
+                  crs=4326) %>%
+  st_transform(crs = 26391)
+```
+
+### Loading Administrative Boundary Data
+
+I will also use the Nigeria Level-2 Administrative Boundary (also known as Local Government Area) polygon dataset from [geoBoundaries](https://www.geoboundaries.org/).
+
+```{r}
+adm_bound <- st_read(dsn="data",
+               layer="geoBoundaries-NGA-ADM2")
+```
+
+The administrative boundary dataset also needs to be projected to the EPSG:26391 CRS.
+
+```{r}
+adm_bound <- adm_bound %>%
+  st_transform(crs = 26391)
+```
+
+```{r}
+glimpse(adm_bound)
+```
+
+Let's check what the Nigeria Level-2 Administrative Boundary and water points data looks like.
+
+```{r}
+tmap_mode("plot")
+
+tm_shape(adm_bound) +
+  tm_polygons() +
+  tm_text("shapeName", size=0.2) +
+tm_shape(wp_sf) +
+  tm_symbols(size=0.1)
+```
+
+## 2 Status of Waterpoints
+
+Now I have 2 geospatial datasets: a point dataset with waterpoint locations and a polygon data with administrative boundaries. I still need to count the number of waterpoints by status for each administrative area. Although the `clean_adm2` variable in the waterpoint data should correspond to the administrative area the waterpoint belongs to, it is more accurate to use the GPS coordinates.
+
+I will use the `st_join()` function to do a spatial join to relate the administrative area names to each waterpoint by its location. The join=st_intersects() argument tells R the type of spatial join to use.
+
+```{r}
+wp_named <- st_join(x = wp_sf,
+                    y = adm_bound,
+                    join = st_intersects,
+                    left = TRUE)
+```
+
+Next, we need check if there are any missing values.
+
+```{r}
+sum(is.na(wp_named$shapeID))
+```
+
+We can plot the points to visually check why these points are missing the administrative area name. Most likely it is because they fall outside any administrative area. If so, we can safely ignore these points. Setting `tmap_mode("view")` creates an interactive plot so we can zoom in to check the points. In addition, `tm_dots()` is used instead of `tm_shape()` this time so that the size of each point scales when zooming in on the interactive map.
+
+```{r}
+wp_named_nas <- wp_named%>%
+  filter(is.na(shapeID))
+
+```
+
+```{r}
+tmap_mode("view")
+tm_shape(adm_bound) +
+  tm_polygons() +
+tm_shape(wp_named_nas) +
+  tm_dots(size=0.1,
+          col="red")
+```
+
+We can see that these 29 points fall outside the boundary of Nigeria so we can exclude them.
+
+Now let's extract the number of waterpoints by status in each administrative boundary and join it to the administrative boundary layer. First, I need to remove the geometry data using the `st_drop_geometry()` function to manipulate it like a regular dataframe using `tidyr` and `dplyr` functions.
+
+The next step is to group by administrative area name and status to generate the count. Lastly, we pivot from long to wide format for joining with the administrative boundary dataset. The `values_fill=0` argument replaces any na values in the `values_from` variable with 0.
+
+```{r}
+prop <- wp_named %>%
+  st_drop_geometry() %>%
+  group_by(shapeID, status) %>%
+  summarise(n=n()) %>%
+  ungroup() %>%
+  pivot_wider(id_cols=shapeID,
+              names_from=status,
+              values_from=n, 
+              values_fill=0)
+
+head(prop, n=5) %>%
+  kable() %>%
+  kable_styling()
+```
+
+Now, we use `left_join()` to relate the counts to the administrative boundary geospatial data. We also need to replace any na counts with 0 and add a new variable for total number of waterpoints.
+
+```{r}
+adm_wp <- left_join(x=adm_bound,
+                    y=prop,
+                    by="shapeID") %>%
+  mutate(across(c(6:8), ~replace_na(.x, 0))) %>%
+  mutate(Total = Functional + `Non-functional` + Unknown)
+```
+
+Finally, we can plot the number of waterpoints by status in each administrative area.
+
+```{r}
+#| fig-height: 8
+
+tmap_mode("plot")
+total <- qtm(adm_wp, "Total")
+func <- qtm(adm_wp, "Functional")
+nonfunc <- qtm(adm_wp, "Non-functional")
+unknown <- qtm(adm_wp, "Unknown")
+
+tmap_arrange(total, func, nonfunc, unknown,
+             asp=1, ncol=2, nrow=2)
+```
+
+The distribution of waterpoints across Nigeria does not appear to be evenly distributed. There are some small administrative areas with a high number of waterpoints (total and functional) in the north of Nigeria. There is one administrative area in the central west with a high number of waterpoints, but also a high number of non-functional waterpoints. Based on the distribution of waterpoints of unknown status, we can infer that the north of Nigeria is likely more developed because there are fewer waterpoints of unknown status; likewise, central Nigeria may not be as developed because there is a high number of water points of unknown or non-functional status.
+
+The code chunk below plots total waterpoints using quantile breaks. We can also add a histogram to view the distribution of total waterpoints.
+
+```{r}
+tm_shape(adm_wp)+
+  tm_polygons("Total",
+              style="quantile",
+              palette="RdBu",
+              legend.hist=TRUE) +
+  tm_layout(main.title="Total Waterpoints in Nigeria",
+            main.title.size=1.1,
+            title.snap.to.legend=FALSE,
+            legend.outside=TRUE,
+            legend.hist.width = 1.1)
+```
+
+ From this map, we can see that the north-east and south of Nigeria tend to have fewer waterpoints. More than 60% of administrative areas have les than 200 waterpoints. As we do not know the population or water demand of each administrative area, it is difficult to say which areas are water stressed or need additional water infrastructure.
+ 
+The spatial distribution of waterpoint supply shows some relation to the climate classification and population distribution. The south of Nigeria has higher rainfall which could mean less reliance on man-made waterpoints and thus fewer waterpoints.Area with higher population also tend to have more waterpoints.
+
+:::{layout="[62,38]"}
+![Koppen-Geiger climate classification map for Nigeria. Source: Beck, H. E., et al. (2018)](images/Koppen-Geiger-climate-classification-map-for-Nigeria-Source-Beck-H-E-et-al-2018.png)
+
+![Population density in Nigeria. Source: Wikimedia Commons](images/1024px-Nigeria_lato.svg.png)
+:::
+
+
+
+```{r}
+tm_shape(adm_wp)+
+  tm_polygons("Functional",
+              style="quantile",
+              palette="RdBu",
+              legend.hist=TRUE) +
+  tm_layout(main.title="Total Functional Waterpoints in Nigeria",
+            main.title.size=1.1,
+            title.snap.to.legend=FALSE,
+            legend.outside=TRUE,
+            legend.hist.width = 1.1)
+```
+
+```{r}
+tm_shape(adm_wp)+
+  tm_polygons("Non-functional",
+              style="quantile",
+              palette="-RdBu",
+              legend.hist=TRUE) +
+  tm_layout(main.title="Total Non-Functional Waterpoints in Nigeria",
+            main.title.size=1.1,
+            title.snap.to.legend=FALSE,
+            legend.outside=TRUE,
+            legend.hist.width = 1.1)
+```
+
+We can also plot it as proportions of total water points. First, we need to generate new variables for proportions.
+
+```{r}
+adm_wp <-adm_wp %>%
+  mutate(pFunctional = Functional/Total,
+         `pNon-functional` = `Non-functional`/Total,
+         pUnknown = Unknown/Total)
+```
+
+The following plot shows the number of non-functional waterpoints out of total waterpoints by administrative area. We can see that there are some administrative areas where there some few waterpoints and most of them are non-functional.
+
+```{r}
+ggplot(adm_wp) +
+  geom_bar(aes(x=reorder(shapeID, `pNon-functional`, decreasing=TRUE), 
+               y=Total,
+               fill="Total"),
+           stat="identity") +
+    geom_bar(aes(x=reorder(shapeID, `pNon-functional`, decreasing=TRUE), 
+               y=`Non-functional`,
+               fill="Non-functional"),
+           stat="identity",
+           alpha=0.8) +
+  scale_fill_manual(name="",
+                    values=c("red", "gray30")) +
+  labs(title="Number of Water by Administrative Area",
+       subtitle="(sorted by proportion of non-functional)",
+       y="Number of waterpoints",
+       x="Administrative Areas")+
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.line.y=element_line(colour="grey50"))
+```
+
+Now let's plot the proportions spatially.
+
+```{r}
+#| fig-height: 8
+
+total <- tm_shape(adm_wp)+
+  tm_polygons("Total",
+              style="quantile",
+              palette="RdBu",
+              title="")+
+  tm_layout(main.title="Total waterpoints")
+
+func <- tm_shape(adm_wp)+
+  tm_polygons("pFunctional",
+              style="quantile",
+              palette="RdBu",
+              title="")+
+  tm_layout(main.title="Proportion functional")
+
+nonfunc <- tm_shape(adm_wp)+
+  tm_polygons("pNon-functional",
+              style="quantile",
+              palette="-RdBu",
+              title="")+
+  tm_layout(main.title="Proportion non-functional")
+
+unknown <- tm_shape(adm_wp)+
+  tm_polygons("pUnknown",
+              style="quantile",
+              palette="RdBu",
+              title="")+
+  tm_layout(main.title="Proportion unknown")
+
+tmap_arrange(total, func, nonfunc, unknown,
+             asp=1, ncol=2, nrow=2)
+```
+
+We can see that many administrative areas in the north have more waterpoints and a higher proportion of functional water points. Many states in the south part of Nigeria have few waterpoints a high proportion of non-functional waterpoints. These areas are likely more water-stressed and efforts to restore waterpoints can be concentrated in those areas.
+
+In addition, there are some administrative areas in north-east tip of Nigeria without any waterpoints at all
+
+```{r}
+
+```

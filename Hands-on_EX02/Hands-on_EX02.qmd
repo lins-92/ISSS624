@@ -179,7 +179,7 @@ The null hypothesis of the Moran's I test is that the data is randomly distribut
 We can use the simulated data to plot the probability distribution of Moran's I.
 
 ```{r}
-mcdata <- as.tibble(bperm$res)
+mcdata <- as_tibble(bperm$res)
 
 ggplot(data=mcdata) +
   geom_histogram(aes(x=value), 
@@ -365,10 +365,10 @@ hunan.localMI <- hunan.localMI %>%
   mutate(DV = GDPPC- mean(GDPPC)) %>%
   mutate(quadrant = case_when(
     Pr.Ii >0.05 ~0,
-    DV>0 & C_mI>0 ~4,
-    DV<0 & C_mI<0 ~1,
-    DV<0 & C_mI>0 ~2,
-    DV>0 & C_mI<0 ~3))
+    DV>0 & C_mI>0 ~4, #high-high cluster
+    DV<0 & C_mI<0 ~2, #low-high outlier
+    DV<0 & C_mI>0 ~1, #low-low cluster
+    DV>0 & C_mI<0 ~3)) #high-low outlier
 ```
 
 We can now build the LISA map:
@@ -397,7 +397,7 @@ tmap_arrange(quantile, LISAmap,
              asp=1, ncol=2)
 ```
 
-From the maps, we can see that there is a cluster of high GDP per capita counties in the northeast. There are 2 counties in the low-low quadrant near the high cluster. From the map on the left, we can see that at least one of those counties has GDP per capita in the 41-60 percentile. This likely indicates that the mean is in skewed because some counties have very high GDP per capita. Median may be a better measure to use when centering the data.
+From the maps, we can see that there is a cluster of high GDP per capita counties in the northeast. There are 2 outlier counties in the with low GDP per capita near this the high cluster. In the southeast, there is a cluster of low GDP per capita.
 
 ### Hot Spot and Cold Spot Analysis
 

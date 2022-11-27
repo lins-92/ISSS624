@@ -1,0 +1,178 @@
+---
+title: "In-Class Exercise 2"
+editor: visual
+---
+
+# Data Preparation for Take-Home Exercise 1
+
+This exercise is to prepare the datasets for take-home exercise 1 on analysing availability of waterpoints in Nigeria. The details of the exercise can be found [here](https://isss624-ay2022-23nov.netlify.app/take-home_ex01).
+
+## 1. Setting Up
+
+### Loading Packages
+
+We will use the following packages:
+
+-   `sf`: import geospatial datasets
+
+-   `tidyverse`: manipulate aspatial data
+
+-   `spdep`: compute spatial weights and autocorrelation
+
+-   `tmap`: plot maps
+
+-   `funModeling`: quick EDA
+
+```{r}
+pacman::p_load(sf, tidyverse, tmap, spdep, funModeling)
+```
+
+### Importing Waterpoint Data
+
+The waterpoint dataset is downloaded from [here](https://data.waterpointdata.org/dataset/Water-Point-Data-Exchange-Plus-WPdx-/eqje-vguj/data) and the data dictionary [here](https://www.waterpointdata.org/wp-content/uploads/2020/11/WPDx_Standardized_Hashtags_11-11-2020.pdf). The file has been saved as "Wdx_plus_full.csv". In this exercise, I will use the csv format. Although the shp file format would be preferable, I was unable to complete the download without the file getting corrupted. Nonetheless, we can simply use the longitude and latitude data provided to convert it to an sf object.
+
+The following code imports the waterpoint dataset and keeps only the datapoints from Nigeria.
+
+```{r}
+#| eval: false
+wp_csv <- read_csv("data/WPdx_plus_full.csv") %>%
+  filter(`#clean_country_name`=="Nigeria")
+```
+
+```{r}
+#| eval: false
+glimpse(wp_csv)
+```
+
+We can see that we do not need most of the variables to analyse the status of waterpoints. The following code chunk keeps only the relevant variables and removes the special characters from the variable names.
+
+```{r}
+#| eval: false
+wp_csv <- wp_csv %>%
+  select(c(3:4, 22))%>%
+  rename_with(~str_replace(.x, "#", ""))
+  
+```
+
+Now we can convert it to sf format. From the [data dictionary](https://www.waterpointdata.org/wp-content/uploads/2020/11/WPDx_Standardized_Hashtags_11-11-2020.pdf), we know that the original GCS of the data is WGS1984 (EPSG:4326) from the data dictionary. We need to project it to the EPSG:26391 CRS later. However, as we will be using the st_intersects() function later, we will keep retain the EPSG:4326 GCS first.
+
+```{r}
+#| eval: false
+wp <- st_as_sf(wp_csv, 
+               coords = c("lon_deg", "lat_deg"),
+               crs=4326)
+```
+
+Now we save the smaller version of the file.
+
+```{r}
+#| eval: false
+write_rds(wp, "data/wp_nga.rds")
+```
+
+### Importing Nigeria LGA Boundary Data
+
+This exercise also usess the Nigeria Level-2 Administrative Boundary (also known as Local Government Area) polygon dataset from [geoBoundaries](https://www.geoboundaries.org/).
+
+```{r}
+nga <- st_read(dsn = "data",
+               layer = "geoBoundaries-NGA-ADM2",
+               crs = 4326)
+```
+
+## 2. Data Wrangling
+
+The following code chunk imports the reduced waterpoint data file which was saved with geometries. We perform some further cleaning by replacing the na values in the status_clean variable as "Unknown".
+
+```{r}
+wp_nga <- read_rds("data/wp_nga.rds") %>%
+  mutate(status_clean = replace_na(status_clean, "Unknown"))
+```
+
+We can use the freq() function of the funModeling package to plot the distribution of status of waterpoints.
+
+```{r}
+freq(data=wp_nga, 
+     input = 'status_clean')
+```
+
+There are types of status but we only really need to know whether the water point is functional or not. Those that were na values will continue to be categorised as unknown status.
+
+### Extracting Functional Waterpoints
+
+```{r}
+wpt_functional <- wp_nga %>%
+  filter(status_clean %in%
+           c("Functional", 
+             "Functional but not in use",
+             "Functional but needs repair"))
+```
+
+```{r}
+freq(data=wpt_functional, 
+     input = 'status_clean')
+```
+
+### Extracting Non-Functional Waterpoints
+
+```{r}
+wpt_nonfunctional <- wp_nga %>%
+  filter(status_clean %in%
+           c("Abandoned/Decommissioned", 
+             "Abandoned",
+             "Non-Functional",
+             "Non functional due to dry season",
+             "Non-Functional due to dry season"))
+```
+
+```{r}
+freq(data=wpt_nonfunctional, 
+     input = 'status_clean')
+```
+
+### Extracting Unknown Status Waterpoints
+
+```{r}
+wpt_unknown <- wp_nga %>%
+  filter(status_clean == "Unknown")
+```
+
+### Point-in-Polygon Count
+
+The following code chunk counts the number of points (functional, non-functional and unknown separately) in each polygon of the administrative boundary data and saves type each as a variable in the administrative data attribute table.
+
+```{r}
+nga_wp <- nga %>% 
+  mutate(`total wpt` = lengths(
+    st_intersects(nga, wp_nga))) %>%
+  mutate(`wpt functional` = lengths(
+    st_intersects(nga, wpt_functional))) %>%
+  mutate(`wpt non-functional` = lengths(
+    st_intersects(nga, wpt_nonfunctional))) %>%
+  mutate(`wpt unknown` = lengths(
+    st_intersects(nga, wpt_unknown)))
+```
+
+Next, we compute the proportions of functional and non-functional waterpoints for each area. We can also perform the transformation now since we have done the st_intersects() already. Save the file.
+
+```{r}
+nga_wp <- nga_wp %>%
+  mutate(pct_functional = `wpt functional`/`total wpt`) %>%
+  mutate(`pct_non-functional` = `wpt non-functional`/`total wpt`) %>%
+  st_transform(crs = 26391) %>%
+  write_rds("data/nga_wp.rds")
+```
+
+## 3. Simple Visualisation of Waterpoint Distribution
+
+```{r}
+#| fig-height: 8
+
+nga_wp <- read_rds("data/nga_wp.rds")
+total <- qtm(nga_wp, "total wpt")
+wp_functional <- qtm(nga_wp, "wpt functional")
+wp_nonfunctional <- qtm(nga_wp, "wpt non-functional")
+unknown <- qtm(nga_wp, "wpt unknown")
+
+tmap_arrange(total, wp_functional, wp_nonfunctional, unknown, asp=1, ncol=2)
+```

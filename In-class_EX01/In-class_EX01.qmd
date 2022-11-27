@@ -243,7 +243,7 @@ The code below displays the weights that will be applied to the neighbours of po
 rswm_ids$weights[1]
 ```
 
-## Applying Spatial Weight Matrices
+## 4. Applying Spatial Weight Matrices
 
 ### Spatially Lagged Mean
 

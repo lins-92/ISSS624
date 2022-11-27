@@ -43,8 +43,8 @@ wp <- read_csv("data/WPdx_plus_Nigeria.csv")
 
 Due to the size of the dataset, it has already been pre-processed to keep only entries in Nigeria and some unused variables have been removed. The following code was used to pre-process the raw data file "Water_Point_Data_Exchange\_-\_Plus\_\_WPdx\_\_.csv" from the website but is not run on this page (raw data file is also not found on GitHub).
 
-```{r, eval=FALSE}
-#not run
+```{r}
+#| eval: false
 wp <- read_csv("data/Water_Point_Data_Exchange_-_Plus__WPdx__.csv") %>%
   filter(`#clean_country_name`=="Nigeria") %>%
   select(c(3:4, 13:14, 22)) %>%

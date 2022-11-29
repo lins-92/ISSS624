@@ -1,0 +1,632 @@
+---
+title: "Take-Home Exercise 01"
+editor: visual
+---
+
+# Water Points in Nigeria
+
+Geospatial analytics hold tremendous potential to address complex problems facing society. The purpose of this study is to understand the spatial patterns of non-functional water points in Nigeria.
+
+## 1. Setting Up
+
+### Loading Packages
+
+We will use the following packages:
+
+-   `sf`: import geospatial datasets
+
+-   `tidyverse`: manipulate aspatial data
+
+-   `spdep`: compute spatial weights and autocorrelation
+
+-   `tmap`: plot maps
+
+-   `funModeling`: quick exploratory data analysis
+
+```{r}
+#| output: false
+
+packages = c('sf', 'tidyverse', 'spdep', 'tmap', 'funModeling', 'kableExtra')
+for (p in packages){
+  if(!require(p, character.only = T)){
+    install.packages(p)
+  }
+  library(p,character.only = T)
+}
+```
+
+### Loading and Preparing Waterpoint Dataset
+
+The water point data is collected by the [Water Point Data Exchange (WPdx)](https://www.waterpointdata.org/about/) whose goal is to improve water access to rural communities by providing data to enable data-driven decision making. The dataset can be found [here](https://data.waterpointdata.org/dataset/Water-Point-Data-Exchange-Plus-WPdx-/eqje-vguj/data) and the data dictionary [here](https://www.waterpointdata.org/wp-content/uploads/2020/11/WPDx_Standardized_Hashtags_11-11-2020.pdf). The data is in csv format with latitude and longitude information.
+
+```{r}
+wp <- read_csv("data/WPdx_plus_Nigeria.csv")
+```
+
+Due to the size of the dataset, it has already been pre-processed to keep only entries in Nigeria and some unused variables have been removed. The following code was used to pre-process the raw data file "WPdx_plus_full.csv" from the website but is not run on this page (raw data file is also not found on GitHub).
+
+```{r}
+#| eval: false
+wp <- read_csv("data/WPdx_plus_full.csv") %>%
+  filter(`#clean_country_name`=="Nigeria") %>%
+  select(c(3:4, 22)) %>%
+  write_csv("data/WPdx_plus_Nigeria.csv")
+  
+```
+
+```{r}
+glimpse(wp)
+```
+
+We can see that the variable names have some special characters which is not ideal. There are also a lot of NA values in the variable of interest (#status_clean). The following code chunk cleans the variable names and replaces the NA values with "Unknown".
+
+```{r}
+wp <- wp %>%
+  rename_with(~str_replace(.x, "#", "")) %>%
+  mutate(status_clean=replace_na(status_clean, "Unknown"))
+```
+
+Let's check the values of status_clean.
+
+```{r}
+wp %>%
+  group_by(status_clean) %>%
+  summarise(n=n()) %>%
+  ungroup() %>%
+  kable() %>%
+  kable_styling()
+```
+
+We can see that the categories are more detailed than we need. To study the proportion of functional and non-functional waterpoints, we can combine the categories into 3 categories: "Functional", "Non-functional" and "unknown"
+
+```{r}
+wp <- wp %>%
+  mutate(status = case_when(
+    status_clean %in% c("Abandoned/Decommissioned", 
+                        "Abandoned",
+                        "Non-Functional",
+                        "Non functional due to dry season",
+                        "Non-Functional due to dry season") ~ "Nonfunctional",
+    status_clean == "Unknown" ~ "Unknown",
+    status_clean %in% c("Functional", 
+                        "Functional but not in use",
+                        "Functional but needs repair") ~ "Functional"
+  ))
+```
+
+Let's visualise the proportions of functionality of the waterpoints. On the whole, only 55% of waterpoints are functional.
+
+```{r}
+freq(wp, input="status")
+```
+
+Now, I convert the aspatial data into geospatial point data from the latitude and longitude data using the `st_as_sf()` function. The original GCS of the data is WGS1984 (EPSG:4326) as stated in the data dictionary.
+
+```{r}
+wp_sf <- st_as_sf(wp, 
+                  coords = c("lon_deg", "lat_deg"),
+                  crs=4326) 
+```
+
+### Loading Administrative Boundary Data
+
+I will also use the Nigeria Level-2 Administrative Boundary (also known as Local Government Area) polygon dataset from [geoBoundaries](https://www.geoboundaries.org/).
+
+```{r}
+adm_bound <- st_read(dsn="data",
+               layer="geoBoundaries-NGA-ADM2")
+```
+
+```{r}
+glimpse(adm_bound)
+```
+
+Let's check what the Nigeria Level-2 Administrative Boundary and water points data looks like.
+
+```{r}
+tmap_mode("plot")
+
+tm_shape(adm_bound) +
+  tm_polygons() +
+  tm_text("shapeName", size=0.2) +
+tm_shape(wp_sf) +
+  tm_symbols(size=0.1)
+```
+
+## 2. Status of Waterpoints
+
+Now I have 2 geospatial datasets: a point dataset with waterpoint locations and a polygon data with administrative boundaries. I still need to count the number of waterpoints by status for each administrative area.
+
+I will use the `st_join()` function to do a spatial join to relate the administrative area names to each waterpoint by its location. The `join=st_intersects()` argument tells R the type of spatial join to use. Note that both datasets must have the same projection (preferably WGS1984 for this step), which is why we have not transformed either dataset yet.
+
+```{r}
+wp_named <- st_join(x = wp_sf,
+                    y = adm_bound,
+                    join = st_intersects,
+                    left = TRUE)
+```
+
+Next, we need check if there are any missing values.
+
+```{r}
+sum(is.na(wp_named$shapeID))
+```
+
+We can plot the points to visually check why these points are missing the administrative area name. Most likely it is because they fall outside any administrative area. If so, we can safely ignore these points. Setting `tmap_mode("view")` creates an interactive plot so we can zoom in to check the points. In addition, `tm_dots()` is used instead of `tm_shape()` this time so that the size of each point scales when zooming in on the interactive map.
+
+```{r}
+wp_named_nas <- wp_named%>%
+  filter(is.na(shapeID))
+
+```
+
+```{r}
+tmap_mode("view")
+tm_shape(adm_bound) +
+  tm_polygons() +
+tm_shape(wp_named_nas) +
+  tm_dots(size=0.1,
+          col="red")
+```
+
+We can see that these 29 points fall outside the boundary of Nigeria so we can exclude them.
+
+Now let's extract the number of waterpoints by status in each administrative boundary and join it to the administrative boundary layer. First, I need to remove the geometry data using the `st_drop_geometry()` function to manipulate it like a regular dataframe using `tidyr` and `dplyr` functions.
+
+The next step is to group by administrative area name and status to generate the count. Lastly, we pivot from long to wide format for joining with the administrative boundary dataset. The `values_fill=0` argument replaces any na values in the `values_from` variable with 0.
+
+```{r}
+prop <- wp_named %>%
+  st_drop_geometry() %>%
+  group_by(shapeID, status) %>%
+  summarise(n=n()) %>%
+  ungroup() %>%
+  pivot_wider(id_cols=shapeID,
+              names_from=status,
+              values_from=n, 
+              values_fill=0)
+
+head(prop, n=5) %>%
+  kable() %>%
+  kable_styling()
+```
+
+Now, we use `left_join()` to relate the counts to the administrative boundary geospatial data. As this is the final dataset we will be working on, we can transform the projection to EPSG:26391. We also need to replace any na counts with 0 and add a new variable for total number of waterpoints.
+
+```{r}
+adm_wp <- left_join(x=adm_bound,
+                    y=prop,
+                    by="shapeID") %>%
+  mutate(across(c(6:8), ~replace_na(.x, 0))) %>%
+  mutate(Total = Functional + Nonfunctional + Unknown) %>%
+  st_transform(crs = 26391)
+```
+
+Finally, we can plot the number of waterpoints by status in each administrative area.
+
+```{r}
+#| fig-height: 8
+
+tmap_mode("plot")
+total <- qtm(adm_wp, "Total")
+func <- qtm(adm_wp, "Functional")
+nonfunc <- qtm(adm_wp, "Nonfunctional")
+unknown <- qtm(adm_wp, "Unknown")
+
+tmap_arrange(total, func, nonfunc, unknown,
+             asp=1, ncol=2, nrow=2)
+```
+
+The distribution of waterpoints across Nigeria does not appear to be evenly distributed. There are some small administrative areas with a high number of waterpoints (total and functional) in the north of Nigeria. There is one administrative area in the central west with a high number of waterpoints, but also a high number of non-functional waterpoints. Based on the distribution of waterpoints of unknown status, we can infer that the north of Nigeria is likely more developed because there are fewer waterpoints of unknown status; likewise, central Nigeria may not be as developed because there is a high number of water points of unknown or non-functional status.
+
+The code chunk below plots total waterpoints using quantile breaks. We can also add a histogram to view the distribution of total waterpoints.
+
+```{r}
+tm_shape(adm_wp)+
+  tm_polygons("Total",
+              style="quantile",
+              palette="RdBu",
+              legend.hist=TRUE) +
+  tm_layout(main.title="Total Waterpoints in Nigeria",
+            main.title.size=1.1,
+            title.snap.to.legend=FALSE,
+            legend.outside=TRUE,
+            legend.hist.width = 1.1)
+```
+
+From this map, we can see that the north-east and south of Nigeria tend to have fewer waterpoints. More than 60% of administrative areas have les than 200 waterpoints. As we do not know the population or water demand of each administrative area, it is difficult to say which areas are water stressed or need additional water infrastructure.
+
+```{r}
+tm_shape(adm_wp)+
+  tm_polygons("Functional",
+              style="quantile",
+              palette="RdBu",
+              legend.hist=TRUE) +
+  tm_layout(main.title="Functional Waterpoints in Nigeria",
+            main.title.size=1.1,
+            title.snap.to.legend=FALSE,
+            legend.outside=TRUE,
+            legend.hist.width = 1.1)
+```
+
+```{r}
+tm_shape(adm_wp)+
+  tm_polygons("Nonfunctional",
+              style="quantile",
+              palette="-RdBu",
+              legend.hist=TRUE) +
+  tm_layout(main.title="Non-Functional Waterpoints in Nigeria",
+            main.title.size=1.1,
+            title.snap.to.legend=FALSE,
+            legend.outside=TRUE,
+            legend.hist.width = 1.1)
+```
+
+We can also plot it as proportions of total water points. First, we need to generate new variables for proportions. Note that there will be some na values generated because some administrative areas do not have any waterpoints. We will not replace these na values with 0 because that would skew the analysis. We will have to be careful later on how these na values are treated.
+
+```{r}
+adm_wp <-adm_wp %>%
+  mutate(pFunctional = Functional/Total,
+         pNonfunctional = Nonfunctional/Total,
+         pUnknown = Unknown/Total)
+
+navals <- which(is.na(adm_wp$pFunctional))
+```
+
+The following plot shows the number of non-functional waterpoints out of total waterpoints by administrative area. We can see that there are some administrative areas on the left side of the plot with some few waterpoints and most of them are non-functional. Repairs should be focused on such areas with fewer waterpoints and high percentage that are non-functional.
+
+```{r}
+ggplot(adm_wp) +
+  geom_bar(aes(x=reorder(shapeID, pNonfunctional, decreasing=TRUE), 
+               y=Total,
+               fill="Total"),
+           stat="identity") +
+    geom_bar(aes(x=reorder(shapeID, pNonfunctional, decreasing=TRUE), 
+               y=Nonfunctional,
+               fill="Non-functional"),
+           stat="identity",
+           alpha=0.8) +
+  scale_fill_manual(name="",
+                    values=c("red", "gray30")) +
+  labs(title="Number of Water by Administrative Area",
+       subtitle="(sorted by proportion of non-functional)",
+       y="Number of waterpoints",
+       x="Administrative Areas")+
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.line.y=element_line(colour="grey50"))
+```
+
+Now let's plot the proportions spatially.
+
+```{r}
+#| fig-height: 8
+
+total <- tm_shape(adm_wp)+
+  tm_polygons("Total",
+              style="quantile",
+              palette="RdBu",
+              title="")+
+  tm_layout(main.title="Total waterpoints")
+
+func <- tm_shape(adm_wp)+
+  tm_polygons("pFunctional",
+              style="quantile",
+              palette="RdBu",
+              title="")+
+  tm_layout(main.title="Proportion functional")
+
+nonfunc <- tm_shape(adm_wp)+
+  tm_polygons("pNonfunctional",
+              style="quantile",
+              palette="-RdBu",
+              title="")+
+  tm_layout(main.title="Proportion non-functional")
+
+unknown <- tm_shape(adm_wp)+
+  tm_polygons("pUnknown",
+              style="quantile",
+              palette="RdBu",
+              title="")+
+  tm_layout(main.title="Proportion unknown")
+
+tmap_arrange(total, func, nonfunc, unknown,
+             asp=1, ncol=2, nrow=2)
+```
+
+We can see that many administrative areas in the north have more waterpoints and a higher proportion of functional waterpoints. Many states in the south part of Nigeria have few waterpoints a high proportion of non-functional waterpoints.
+
+The spatial distribution of waterpoint supply shows some relation to the climate classification and population distribution. The south of Nigeria has higher rainfall which could mean less reliance on man-made waterpoints and thus there are fewer waterpoints. Many regions in the north of Nigeria have a high proportion of functional waterpoints, possibly because of the high reliance on them due to the arid climate.
+
+Areas with higher population also tend to have more waterpoints.
+
+::: {layout="[62,38]"}
+![Koppen-Geiger climate classification map for Nigeria. Source: Beck, H. E., et al. (2018)](images/Koppen-Geiger-climate-classification-map-for-Nigeria-Source-Beck-H-E-et-al-2018.png){alt="Koppen-Geiger climate classification map for Nigeria. Source: Beck, H. E., et al. (2018)"}
+
+![Population density in Nigeria. Source: Wikimedia Commons](images/1024px-Nigeria_lato.svg.png){alt="Population density in Nigeria. Source: Wikimedia Commons"}
+:::
+
+## 3. How Are Waterpoints Distributed?
+
+From plotting the total number of waterpoints and the proportion of functional waterpoints, we can visually see that waterpoints may not be evenly distributed across space in Nigeria. To confirm our intuition from visual inspection, we can test it statistically using global and local spatial autocorrelation statistics.
+
+### Defining the Neighbourhood
+
+First, we must define the neighbourhood to be considered for each administrative area. There are a number of methods to do this (see [In-Class Exercise 1](https://lins-92-isss624.netlify.app/in-class_ex01/in-class_ex01)). Contiguity matrices only consider polygons that are immediately adjacent while distance matrices use distance to determine the neighbour. The choice of weight matrix can affect the results of the analysis.
+
+**Contiguity Weight Matrix**
+
+First, I create an nb object listing the neighbours of each administrative area. Queen method will be used to identify the adjacent neighbours. From the summary below, we can see that on average each administrative area is contiguous with about 6 other polygons. However, there is 1 administrative area which does not have any contiguous neighbours. Assuming there are no drawing errors, it is likely an island. This means that contiguity matrices are not suitable for this analysis.
+
+```{r}
+wm_q <- poly2nb(adm_wp, queen=TRUE)
+summary(wm_q)
+```
+
+You may recall that we left some na values in the proportions. The next code chunk will manually exclude these polygons from the neighbour list so they are not considered when doing the statistical tests. If we replace these values with 0, it will be treated as having low proportion of functional/non-functional waterpoints which is not correct.
+
+```{r}
+wm_q1 <- subset(wm_q, 
+                !(1:length(wm_q) %in% navals))
+```
+
+The next code chunk finds the coordinates of centroids of each polygon to find the distance between neighbours in the wm_q nb item and applies a function to inverse the distance.
+
+```{r}
+longitude <- map_dbl(adm_wp$geometry, ~st_centroid(.x)[[1]])
+latitude <- map_dbl(adm_wp$geometry, ~st_centroid(.x)[[2]])
+coords <- cbind(longitude/1000, latitude/1000)
+dist <- nbdists(wm_q, coords, 
+                longlat = FALSE)
+ids <- lapply(dist, function(x) 1/(x))
+```
+
+Lastly, each neighbour's effect is weighted by inverse distance.
+
+```{r}
+rswm_ids <- nb2listw(wm_q,
+                     glist=ids,
+                     style="B",
+                     zero.policy=TRUE)
+
+
+```
+
+**Adaptive Distance Weight Matrix**
+
+An adaptive distance weight matrix sets the fixed number of neighbours for each study area. It is usually used if there is large variation in polygon sizes but we need to set a consistent scale of analysis.
+
+In this exercise, I will fix the number of neighbours at 8
+
+```{r}
+k8 <- knn2nb(knearneigh(coords, k=8))
+k8
+```
+
+```{r}
+k8_lw <- nb2listw(k8, style="B")
+```
+
+```{r}
+
+```
+
+### Computing Global Moran's I
+
+The global Moran's I test is intended to test if the independent variable (proportion of functional and non-functional waterpoints) is evenly distributed, randomly distributed or clustered. Since we do not know the underlying distribution of waterpoints, we use Monte Carlo simulations (n=1000) to simulate randomly distribution of waterpoints.
+
+**Inverse-Distance Contiguity Weight Matrix**
+
+```{r}
+set.seed=123
+
+moran.mc(adm_wp$pFunctional, 
+         listw=rswm_ids, 
+         nsim=999,
+         zero.policy = TRUE, 
+         na.action=na.omit)
+```
+
+```{r}
+moran.mc(adm_wp$pNonfunctional, 
+         listw=rswm_ids, 
+         nsim=999,
+         zero.policy = TRUE, 
+         na.action=na.omit)
+```
+
+The computed Moran's I of 0.56 (p-value=0.001) and 0.50 (p-value=0.001) for the proportions of functional and non-functional waterpoints respectively are significant at the 5% significance level. This indicates that there is some degree of clustering of proportions of functional and non-functional waterpoints.
+
+**Adaptive Distance Weight Matrix**
+
+```{r}
+set.seed=123
+
+moran.mc(adm_wp$pFunctional, 
+         listw=k8_lw, 
+         nsim=999,
+         zero.policy = TRUE, 
+         na.action=na.omit)
+```
+
+```{r}
+set.seed=123
+
+moran.mc(adm_wp$pNonfunctional, 
+         listw=k8_lw, 
+         nsim=999,
+         zero.policy = TRUE, 
+         na.action=na.omit)
+```
+
+Similarly, the Moran's I tests under using the adaptive weight matrix show clustering.
+
+## 4. Identifying Hotspots and Coldspots
+
+Hotspots and coldspots can be detected using the local Moran's I statistics. Unlike the global Moran's I test, the local Moran's I test calculates the test statistics for each observation. Each value measures the extent of significant spatial clustering of similar values around that observation.
+
+**Inverse-Distance Contiguity Weight Matrix**
+
+The following code chunk conducts the local MI test and saves the result to a dataframe for both proportion of functional and non-functional waterpoints. These are then combined joined to the polygon data to plot in a map.
+
+```{r}
+ids.localMI.func <- localmoran(adm_wp$pFunctional,
+                               rswm_ids, 
+                               zero.policy=TRUE)
+ids.localMI.func <- data.frame(ids.localMI.func)%>%
+  select(c(1,5)) %>%
+  rename(func.ids.Ii = Ii,
+         func.ids.Pr = Pr.z....E.Ii..)
+
+ids.localMI.nonfunc <- localmoran(adm_wp$pNonfunctional,
+                                  rswm_ids,
+                                  zero.policy=TRUE)
+ids.localMI.nonfunc <- data.frame(ids.localMI.nonfunc)%>%
+  select(c(1,5)) %>%
+  rename(nonfunc.ids.Ii = Ii,
+         nonfunc.ids.Pr = Pr.z....E.Ii..)
+
+adm_wp.localMI <- cbind(adm_wp, ids.localMI.func, ids.localMI.nonfunc) 
+```
+
+The local Moran's score is not enough to show spatial clustering because it does not tell us whether the value of the variable being tested (proportion of functional/non-functional waterpoints) and whether the test result was significant. As such, we assign each observation to a quadrant depending on the value of the variable on the y-axis (centred around the mean) and Moran's I on the x-axis.
+
+```{r}
+adm_wp.localMI <- adm_wp.localMI %>%
+  mutate(DV.func = pFunctional- mean(pFunctional)) %>%
+  mutate(ids.func.quadrant = case_when(
+    func.ids.Pr >0.05 ~0,
+    DV.func>0 & func.ids.Ii>0 ~4, #high-high cluster
+    DV.func<0 & func.ids.Ii<0 ~2, #low-high outlier
+    DV.func<0 & func.ids.Ii>0 ~1, #low-low cluster
+    DV.func>0 & func.ids.Ii<0 ~3)) %>% #high-low outlier
+    mutate(DV.nonfunc = pNonfunctional- mean(pNonfunctional)) %>%
+  mutate(ids.nonfunc.quadrant = case_when(
+    nonfunc.ids.Pr >0.05 ~0,
+    DV.func>0 & func.ids.Ii>0 ~4, #high-high cluster
+    DV.func<0 & func.ids.Ii<0 ~2, #low-high outlier
+    DV.func<0 & func.ids.Ii>0 ~1, #low-low cluster
+    DV.func>0 & func.ids.Ii<0 ~3)) #high-low outlier
+```
+
+Plot LISA cluster map
+
+```{r}
+#| fig-height: 8
+
+pfunc.map <- tm_shape(adm_wp.localMI) +
+  tm_fill(col = "pFunctional", 
+          style="quantile",
+          title="Proportion") +
+  tm_borders(alpha=0.5) +
+  tm_layout(main.title="Proportion Functional")
+
+pnonfunc.map <- tm_shape(adm_wp.localMI) +
+  tm_fill(col = "pNonfunctional", 
+          style="quantile",
+          title="Proportion") +
+  tm_borders(alpha=0.5) +
+  tm_layout(main.title="Proportion Non-functional")
+
+colors <- c("#ffffff", "#2c7bb6", "#abd9e9", "#fdae61", "#d7191c")
+clusters <- c("insignificant", "low-low", "low-high", "high-low", "high-high")
+
+ids.localMI.func.map <- tm_shape(adm_wp.localMI) +
+  tm_fill(col = "ids.func.quadrant", 
+                    style="cat",
+          palette =colors,
+          label=clusters,
+          title="Quadrant") +
+  tm_borders(alpha=0.5) +
+  tm_layout(main.title="LISA Cluster (Functional)")
+
+ids.localMI.nonfunc.map <- tm_shape(adm_wp.localMI) +
+  tm_fill(col = "ids.nonfunc.quadrant", 
+                    style="cat",
+          palette =colors,
+          label=clusters,
+          title="Quadrant") +
+  tm_borders(alpha=0.5) +
+  tm_layout(main.title="LISA Cluster (Non-Functional)")
+
+tmap_arrange(pfunc.map, ids.localMI.func.map, 
+             pnonfunc.map, ids.localMI.nonfunc.map,
+           asp=1, ncol=2, nrow=2)
+```
+
+The LISA cluster maps clearly show that there is clustering in the proportion of functional/non-functional waterpoints. There is a large cluster of regions with high proportion of functional waterpoints to the central north of Nigeria. There is also a low-low cluster in central Nigeria where the proportion of functional waterpoints is very low. This area is an area of concern for maintenance efforts. There are not many outliers.
+
+Interestingly, there are some clusters of high proportion of non-functional waterpoints in the central north of Nigeria that overlap with the cluster of high proportion functional waterpoint clusters.
+
+The low-low cluster in the northeast of Nigeria is a result of having few total waterpoints.
+
+**Adaptive Distance Weight Matrix**
+
+The follow code chunks replicate the process above but with the adaptive distance weight matrix instead.
+
+```{r}
+k8.localMI.func <- localmoran(adm_wp$pFunctional,
+                               k8_lw, 
+                               zero.policy=TRUE)
+k8.localMI.func <- data.frame(k8.localMI.func)%>%
+  select(c(1,5)) %>%
+  rename(func.k8.Ii = Ii,
+         func.k8.Pr = Pr.z....E.Ii..)
+
+k8.localMI.nonfunc <- localmoran(adm_wp$pNonfunctional,
+                                  k8_lw, 
+                                  zero.policy=TRUE)
+k8.localMI.nonfunc <- data.frame(k8.localMI.nonfunc)%>%
+  select(c(1,5)) %>%
+  rename(nonfunc.k8.Ii = Ii,
+         nonfunc.k8.Pr = Pr.z....E.Ii..)
+
+adm_wp.localMI <- cbind(adm_wp.localMI, k8.localMI.func, k8.localMI.nonfunc) 
+
+adm_wp.localMI <- adm_wp.localMI %>%
+  mutate(k8.func.quadrant = case_when(
+    func.k8.Pr >0.05 ~0,
+    DV.func>0 & func.k8.Ii>0 ~4, #high-high cluster
+    DV.func<0 & func.k8.Ii<0 ~2, #low-high outlier
+    DV.func<0 & func.k8.Ii>0 ~1, #low-low cluster
+    DV.func>0 & func.k8.Ii<0 ~3)) %>% #high-low outlier
+  mutate(k8.nonfunc.quadrant = case_when(
+    nonfunc.k8.Pr >0.05 ~0,
+    DV.func>0 & func.k8.Ii>0 ~4, #high-high cluster
+    DV.func<0 & func.k8.Ii<0 ~2, #low-high outlier
+    DV.func<0 & func.k8.Ii>0 ~1, #low-low cluster
+    DV.func>0 & func.k8.Ii<0 ~3)) #high-low outlier
+```
+
+Plot LISA cluster map
+
+```{r}
+#| fig-height: 8
+
+colors <- c("#ffffff", "#2c7bb6", "#abd9e9", "#fdae61", "#d7191c")
+clusters <- c("insignificant", "low-low", "low-high", "high-low", "high-high")
+
+k8.localMI.func.map <- tm_shape(adm_wp.localMI) +
+  tm_fill(col = "k8.func.quadrant", 
+          style="cat",
+          palette =colors,
+          label=clusters,
+          title="Quadrant") +
+  tm_borders(alpha=0.5) +
+  tm_layout(main.title="LISA Cluster (Functional)")
+
+k8.localMI.nonfunc.map <- tm_shape(adm_wp.localMI) +
+  tm_fill(col = "k8.nonfunc.quadrant", 
+          style="cat",
+          palette =colors,
+          label=clusters,
+          title="Quadrant") +
+  tm_borders(alpha=0.5) +
+  tm_layout(main.title="LISA Cluster (Non-Functional)")
+
+tmap_arrange(pfunc.map, k8.localMI.func.map, 
+             pnonfunc.map, k8.localMI.nonfunc.map,
+             asp=1, ncol=2, nrow=2)
+```
+
+Something

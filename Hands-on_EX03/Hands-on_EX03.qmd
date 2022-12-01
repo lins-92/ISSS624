@@ -1,0 +1,393 @@
+---
+title: "Hands-on Exercise 03"
+editor: visual
+---
+
+# Geographical Segmentation with Spatially Constrained Clustering Techniques
+
+In geobusiness and spatial policy, it is a common practice to delineate the market or planning area into homogeneous regions by using multivariate data. This exercise is to practice geographical segmentation techniques. Geographical segmentation delineates a homogeneous region by using geographically referenced multivariate data. We will also conduct aspatial hierarchical clustering on the dataset for comparison.
+
+In this hands-on exercise, we are interested to delineate [Shan State](https://en.wikipedia.org/wiki/Shan_State), [Myanmar](https://en.wikipedia.org/wiki/Myanmar) into homogeneous regions by using multiple Information and Communication technology (ICT) measures, namely: Radio, Television, Land line phone, Mobile phone, Computer, and Internet at home.
+
+## 1. Setting up
+
+### Load Packages
+
+There are the packages that will be used:
+
+-   **sf**, **rgdal** and **spdep**: spatial data handling and spatial weights
+
+-   **tidyverse**: manipulation of attribute data and plotting visualisations (aspatial)
+
+-   **tmap**: creating map visualisations
+
+-   **coorplot**, **ggpubr**, and **heatmaply**: multivariate data analysis and visualisation
+
+-   **cluster**, **factoextra**, **dendextend** and **clustGeo**: cluster analysis
+
+```{r}
+#| output: false
+
+pacman::p_load(rgdal, spdep, tmap, sf, 
+               ggpubr, cluster, factoextra, NbClust,
+               heatmaply, corrplot, psych, tidyverse,
+               dendextend)
+```
+
+### Import Data
+
+The dataset used in this exercise is Myanmar Township Boundary GIS data and some infocomm data from the **2014 Myanmar Population and Housing Census Myanmar**. For this exercise, we are only using townships from the state of Shan (comprised of Shan (East), Shan (North) and Shan (South)).
+
+The following code chunk imports the geospatial data.
+
+```{r}
+shan_sf <- st_read(dsn="data/geospatial",
+                   layer="myanmar_township_boundaries") %>%
+  filter(ST %in% c("Shan (East)", "Shan (North)", "Shan (South)"))
+```
+
+```{r}
+glimpse(shan_sf)
+```
+
+```{r}
+tm_shape(shan_sf) +
+  tm_polygons() +
+  tm_text("TS", size =0.5)
+```
+
+Now for the attribute data:
+
+```{r}
+ict <- read_csv ("data/aspatial/Shan-ICT.csv")
+```
+
+```{r}
+glimpse(ict)
+```
+
+The variables Radio, Television, Land line phone, Mobile phone, Computer and Internet at home are the absolute number of households within that township that have access that infocomm technology. For a meaningful comparision between townships, we need to convert these into proportions out of total household in the township. The following code chunk also changes some of the variable names so that the variable names match with the geospatial dataset.
+
+```{r}
+ict_derived <- ict %>%
+  mutate(`RADIO_PR` = `Radio`/`Total households`*100) %>%
+  mutate(`TV_PR` = `Television`/`Total households`*100) %>%
+  mutate(`LLPHONE_PR` = `Land line phone`/`Total households`*100) %>%
+  mutate(`MPHONE_PR` = `Mobile phone`/`Total households`*100) %>%
+  mutate(`COMPUTER_PR` = `Computer`/`Total households`*100) %>%
+  mutate(`INTERNET_PR` = `Internet at home`/`Total households`*100) %>%
+  rename(`DT_PCODE` =`District Pcode`,`DT`=`District Name`,
+         `TS_PCODE`=`Township Pcode`, `TS`=`Township Name`,
+         `TT_HOUSEHOLDS`=`Total households`,
+         `RADIO`=`Radio`, `TV`=`Television`, 
+         `LLPHONE`=`Land line phone`, `MPHONE`=`Mobile phone`,
+         `COMPUTER`=`Computer`, `INTERNET`=`Internet at home`) 
+
+```
+
+Join the aspatial data to the geospatial data.
+
+```{r}
+shan_sf <- left_join(shan_sf, 
+                     ict_derived, 
+                     by=c("TS_PCODE"="TS_PCODE"))
+```
+
+## 2. Exploratory Data Analysis
+
+We can plot the distribution of technology penetration for each type of infocomm technology. The follow code chunk creates a histogram of the absolute number of households that have adopted each technology type and then we use ggarrange() to combine these plots together.
+
+```{r}
+radio <- ggplot(data=ict_derived, 
+             aes(x= `RADIO`)) +
+  geom_histogram(bins=20, 
+                 color="black", 
+                 fill="light blue") +
+  theme_bw()
+
+tv <- ggplot(data=ict_derived, 
+             aes(x= `TV`)) +
+  geom_histogram(bins=20, 
+                 color="black", 
+                 fill="light blue")+
+  theme_bw()
+
+llphone <- ggplot(data=ict_derived, 
+             aes(x= `LLPHONE`)) +
+  geom_histogram(bins=20, 
+                 color="black", 
+                 fill="light blue")+
+  theme_bw()
+
+mphone <- ggplot(data=ict_derived, 
+             aes(x= `MPHONE`)) +
+  geom_histogram(bins=20, 
+                 color="black", 
+                 fill="light blue")+
+  theme_bw()
+
+computer <- ggplot(data=ict_derived, 
+             aes(x= `COMPUTER`)) +
+  geom_histogram(bins=20, 
+                 color="black", 
+                 fill="light blue")+
+  theme_bw()
+
+internet <- ggplot(data=ict_derived, 
+             aes(x= `INTERNET`)) +
+  geom_histogram(bins=20, 
+                 color="black", 
+                 fill="light blue")+
+  theme_bw()
+
+ggarrange(radio, tv, llphone, mphone, computer, internet, 
+          ncol = 3, nrow = 2)
+```
+
+We should also visualise the distribution of % technology penetration. Instead of creating multiple plots and combining them, we can also make use of the `facet_wrap()` function of ggplot2 to automatically generate the 6 graphs. First, we need to use `pivot_longer()` to pivot the data from wide to long format such that each observation corresponds to one technology type in a township.
+
+One of the benefits of this method is that it automatically sets the x-axis to the same scale so it is easier to compare between each type of technology.
+
+```{r}
+ict_prop <- ict_derived %>%
+  pivot_longer(cols= ends_with("_PR"),
+               names_to = "tech",
+               values_to="PR") %>%
+  mutate(tech = str_replace(tech, "_PR", ""))
+```
+
+```{r}
+ggplot(data = ict_prop,
+       aes(x=PR)) +
+  geom_histogram(bins=20, 
+                 color="black", 
+                 fill="light blue") + 
+  facet_wrap(vars(tech)) +
+  theme_bw()
+```
+
+We can see that computers clearly have the lowest penetration rate with almost all townships having less than 10% of households with this technology. TV is the technology with the highest penetration rate.
+
+We should also plot these spatially. We can plot all the penetration rates at the same time using the `tm_facets()` function.
+
+```{r}
+#| fig-width: 10
+#| fig-height: 8
+
+tm_shape(shan_sf) +
+    tm_polygons(c("RADIO_PR", "TV_PR", "LLPHONE_PR", "MPHONE_PR",
+                  "COMPUTER_PR", "INTERNET_PR"),
+                style="jenks") +
+    tm_facets(sync = TRUE, ncol = 3) +
+  tm_legend(legend.position = c("right", "bottom"))+
+  tm_layout(outer.margins=0, asp=0)
+
+```
+
+We can see that technology penetration is not equal in the Shan state. Some townships have much higher technology penetration rates for all types of technology. Nonetheless, although a township may have very high penetration of one type of technology, it does not necessarily translate into high penetration rate of other technologies.
+
+## 3. Correlation Analysis
+
+Before conducting cluster analysis, we need to check for multicollinearity. Multicollinearity occurs when independent variables are linearly correlated. it is important to check for multicollinearity because it makes statistical inferences unreliable.
+
+The cor() function computes the correlation coefficients of each pair of variables. We can then use the corrplot.mix() function from the corrplot function to plot a correlogram showing the pairwise correlation values.
+
+```{r}
+cluster_vars.cor = cor(ict_derived[,12:17])
+corrplot.mixed(cluster_vars.cor,
+         lower = "ellipse", 
+               upper = "number",
+               tl.pos = "lt",
+               diag = "l",
+               tl.col = "black")
+```
+
+We typically consider any correlation coefficient more than 0.85 or less than -0.85 as highly correlated. As such, we should only use one of the COMPUTER_PR or INTERNET_PR for the subsequent analysis.
+
+## 4. Hierarchical Clustering
+
+First, we create a new dataframe with only the variables of interest. Note that we did not include INTERNET_PR because of the multicollinearity issue. Next, we assign the row names using the township names.
+
+```{r}
+cluster_vars <- data.frame(ict_derived) %>%
+  select("TS", "RADIO_PR", "TV_PR", "LLPHONE_PR", "MPHONE_PR", "COMPUTER_PR")
+
+row.names(cluster_vars) <- cluster_vars$"TS"
+head(cluster_vars,10)
+```
+
+We no longer need the TS column.
+
+```{r}
+shan_ict <- cluster_vars %>%
+  select(!1)
+```
+
+### Standardisation of Data
+
+Data standardisation is performed such that variables belong to approximately the same range. This is important in hierarchical clustering because it uses distance measures. A variable which has a larger magnitude will have a larger effect on the computed distance than other variables. Standardisation does not change the distribution of the data.
+
+The following chunck applies min-max normalisation. It standardised values to a range of 0-1 with 0 being min value and 1 being the max value.
+
+```{r}
+shan_ict.std <- normalize(shan_ict)
+summary(shan_ict.std)
+```
+
+The following chunk applies z-score normalisation which assumes that the underlying distribution of the data is a normal distribution. Normality should be checked before using this standardisation method.
+
+```{r}
+shan_ict.z <- scale(shan_ict)
+describe(shan_ict.z)
+```
+
+The following code chunk plots the kernel density original and standardised versions of RADIO_PR. The underlying distribution has not changed.
+
+```{r}
+r <- ggplot(data=ict_derived, 
+             aes(x= RADIO_PR)) +
+  geom_density(
+                 color="black") +
+  ggtitle("Original Data")
+
+s <- ggplot(data=shan_ict.std, 
+       aes(x=RADIO_PR)) +
+  geom_density(
+                 color="black") +
+  ggtitle("Min-Max Standardisation")
+
+z <- ggplot(data=as.data.frame(shan_ict.z), 
+       aes(x=RADIO_PR)) +
+  geom_density(color="black") +
+  ggtitle("Z-score Standardisation")
+
+ggarrange(r, s, z,
+          ncol = 3,
+          nrow = 1)
+```
+
+Standardisation is usually used if the variables have very different ranges. In this case, since all the variables are proportions, they are within the range of 0-100 and do not need to be standardised.
+
+### Choosing Clustering Algorithm and Number of Clusters
+
+Hierarchical clustering uses distance measures to measure similarity within clusters and dissimilarity between clusters. As such, we first need to calculate the proximity matrix of distances between each observation. The method tells the algorithm what type of distance to compute.
+
+```{r}
+proxmat <- dist(shan_ict, method = 'euclidean')
+```
+
+There are many different agglomeration methods when performing hierarchical clustering (ie. how to measure similarity/dissimilarity between clusters). We can use the agnes() function of the cluster package to compute the agglomerative coefficient for each method to find the best method. Values closer to 1 suggest a strong clustering structure.
+
+The following code chunk creates a function to extract the agglomerative coefficient for each method and applies it to the 4 different methods.
+
+```{r}
+m <- c( "average", "single", "complete", "ward")
+names(m) <- c( "average", "single", "complete", "ward")
+
+ac <- function(x) {
+  agnes(shan_ict, method = x)$ac
+}
+
+map_dbl(m, ac)
+
+```
+
+We can then use the `hclust()` to conduct the clustering using the specified method and plot the tree.
+
+```{r}
+hclust_ward <- hclust(proxmat, method = 'ward.D')
+plot(hclust_ward)
+```
+
+However, this still does not tell us the optimal number of clusters. There are 3 methods that we can use:
+
+-   [Elbow Method](https://en.wikipedia.org/wiki/Elbow_method_(clustering))
+
+-   [Average Silhouette Method](https://www.sciencedirect.com/science/article/pii/0377042787901257?via%3Dihub)
+
+-   [Gap Statistic Method](https://statweb.stanford.edu/~gwalther/gap)
+
+#### Gap Statistic
+
+The [**gap statistic**](http://www.web.stanford.edu/~hastie/Papers/gap.pdf) compares the total within intra-cluster variation for different values of k with their expected values under null reference distribution (distribution with no obvious clustering) of the data. The estimated optimal clusters (k) will be value that maximises the gap statistic, indicating that there is greatest difference between the clustering of the data and the clustering of a random dataset at that number of k.
+
+clusGap() is used to compute the gap statistic. We can specify the clustering method and maximum number of clusters to consider. If performing k-means clustering, the nstart argument can be used to specify the number of sets of initial centroids. The firstmax method tells the algorithm to report the first local maximum. Because the null reference distribution is formed through Monte Carlo simulations, we need to specify the number of simulations (B=50 here).
+
+```{r}
+set.seed(12345)
+gap_stat <- clusGap(shan_ict, 
+                    FUN = hcut, 
+                    K.max = 10, 
+                    B = 50)
+# Print the result
+print(gap_stat, method = "firstmax")
+```
+
+Next, we can visualise the plot by using [*fviz_gap_stat()*](https://rpkgs.datanovia.com/factoextra/reference/fviz_nbclust.html) of [**factoextra**](https://rpkgs.datanovia.com/factoextra/) package.
+
+```{r}
+fviz_gap_stat(gap_stat)
+```
+
+Although the algorithm recommends 1 cluster as the optimum, this is not meaningful. We can instead use the next local maximum (k=6).
+
+#### Elbow Method
+
+The elbow plots the total within sum of squares (measure of the variability of the observations within each cluster) by each clustering over a range of k. At the elbow of the curve, dimishing marginal returns sets in, meaning that each subsequent increase in k results in less and less decrease in variability within each cluster (ie. clusters are getting more cohesive but at a slower rate). To prevent overfitting, we choose the k at the elbow of the curve.
+
+```{r}
+fviz_nbclust(shan_ict, hcut, method = "wss")
+
+```
+
+The elbow appears to occur at 2 or 4.
+
+#### Average Silhouette Method
+
+The silhouette value is a measure of how similar an object is to its own cluster (cohesion) compared to other clusters (separation). The silhouette ranges from −1 to +1, where a high value indicates that the object is well matched to its own cluster and poorly matched to neighboring clusters. The average silhouette width is the average of the silhouette values of all the clusters. Maximising this value would give the number of clusters with the best intra-cluster cohesion and intra-cluster separation.
+
+The `fviz_nbclust()` function of the **factoextra** package can use the average silhouette method. In the code chunk below, the `find_k()` function of the **dendextend** package uses average silhouette to recommend the optimal number of clusters.
+
+```{r}
+num_k <- find_k(hclust_ward)
+plot(num_k)
+```
+
+### Visualising Clusters
+
+Although all 3 methods have recommended different optimal number of clusters, let's just use k=6 from the gap statistic method.
+
+The follow code chunk creates borders around the clusters so we can see which townships are clustered together.
+
+```{r}
+plot(hclust_ward, cex = 0.6)
+rect.hclust(hclust_ward, 
+            k = 6, 
+            border = 2:5)
+```
+
+The heatmaply package can be used to build an interactive cluster heatmap to study the distribution of cluster variables at the same time. As the `heatmaply()` function takes a numeric matrix as input, we must convert the shan_ict object first.
+
+```{r}
+shan_ict_mat <- data.matrix(shan_ict)
+
+```
+
+The following code chunk creates the interactive heatmap.
+
+```{r}
+heatmaply(normalize(shan_ict_mat),
+          Colv=NA,
+          dist_method = "euclidean",
+          hclust_method = "ward.D",
+          seriate = "OLO",
+          colors = Blues,
+          k_row = 6,
+          margins = c(NA,200,60,NA),
+          fontsize_row = 4,
+          fontsize_col = 5,
+          main="Geographic Segmentation of Shan State by ICT indicators",
+          xlab = "ICT Indicators",
+          ylab = "Townships of Shan State"
+          )
+```

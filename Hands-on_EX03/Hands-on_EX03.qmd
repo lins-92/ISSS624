@@ -31,7 +31,7 @@ There are the packages that will be used:
 pacman::p_load(rgdal, spdep, tmap, sf, 
                ggpubr, cluster, factoextra, NbClust,
                heatmaply, corrplot, psych, tidyverse,
-               dendextend)
+               dendextend, GGally)
 ```
 
 ### Import Data
@@ -390,4 +390,159 @@ heatmaply(normalize(shan_ict_mat),
           xlab = "ICT Indicators",
           ylab = "Townships of Shan State"
           )
+```
+
+If we are happy with the 6 clusters formed, we can save the cluster assignments to the dataset and map them out. `cutree()` function extracts the cluster assignments
+
+```{r}
+groups <- as.factor(cutree(hclust_ward, k=6))
+
+```
+
+The following code chunk combines the cluster assignments to shan_sf dataset.
+
+```{r}
+shan_sf_cluster <- cbind(shan_sf, as.matrix(groups)) %>%
+  rename(`CLUSTER`=`as.matrix.groups.`)
+```
+
+Now we can plot it.
+
+```{r}
+qtm(shan_sf_cluster, "CLUSTER")
+```
+
+The clusters are fragmented spatially. This is one of the motivations for spatially constrained clustering.
+
+## 5. Spatially Constrained Clustering
+
+First, we need to convert `shan_sf` into SpatialPolygonsDataFrame. This is because the `skater()` function only support **sp** objects such as SpatialPolygonDataFrame.
+
+The code chunk below uses [`as_Spatial()`]{.underline} of **sf** package to convert shan_sf into a SpatialPolygonDataFrame called shan_sp.
+
+```{r}
+shan_sp <- as_Spatial(shan_sf)
+```
+
+### Defining the Neighbourhood
+
+As always, we must define the neighbourhood (neighbour list). We will be using a queen contiguity matrix.
+
+```{r}
+shan.nb <- poly2nb(shan_sp, queen=TRUE)
+summary(shan.nb)
+```
+
+```{r}
+
+plot(shan_sp, 
+     border=grey(.5))
+plot(shan.nb, 
+     coordinates(shan_sp), 
+     col="blue", 
+     add=TRUE)
+```
+
+### Computing the Minimum Spanning Tree
+
+A spanning tree of an undirected graph (such as the connectivity network above) with V vertices (nodes) refers to a subgraph with V-1 edges such that all vertices are still connected to each other. The minimum spanning tree refers to a spanning tree with the lowest total cost if the edges are weighted.
+
+To compute the minimum spanning tree, we must first weigh the edges with a cost. The code chunk below computes the "cost" of an edge which is pairwise dissimilarity between neighbours' values on the five variables.
+
+```{r}
+lcosts <- nbcosts(shan.nb, shan_ict)
+```
+
+We can assign the costs to the neighbour list to create the spatial weight matrix.
+
+```{r}
+shan.w <- nb2listw(shan.nb,
+                   glist=lcosts,
+                   style="B")
+summary(shan.w)
+```
+
+We can now calculate the minimum spanning tree using the `mstree()` function of the **spdep** package. As the minimum spanning tree only has v-1 edges, the dimension of the shan.mst object is only 54, not 55 which is the total number of townships in Shan state.
+
+```{r}
+shan.mst <- mstree(shan.w)
+dim(shan.mst)
+```
+
+We can plot the minimum spanning tree using the code chunk below.
+
+```{r}
+plot(shan_sp, border=gray(.5))
+plot.mst(shan.mst, 
+         coordinates(shan_sp), 
+         col="blue", 
+         cex.lab=0.7, 
+         cex.circles=0.005, 
+         add=TRUE)
+```
+
+### Computing Spatially Constrained Clusters Using SKATER Method
+
+The code chunk below computes the spatially constrained clusters using the SKATER method. It takes the edges from the minimum spanning tree (not the costs!) and the actual data containing the variable considered. It performs n cuts to get n+1 number of clusters.
+
+```{r}
+clust6 <- skater(edges = shan.mst[,1:2], 
+                 data = shan_ict, 
+                 method = "euclidean", 
+                 ncuts = 5)
+```
+
+```{r}
+clust6
+```
+
+We can find the number of townships within each cluster using the following code:
+
+```{r}
+table(clust6$groups)
+```
+
+Of course, we should also plot the clusters spatially to see the result:
+
+```{r}
+#| warning: false
+
+plot(shan_sp, border=gray(.5))
+plot(clust6, 
+     coordinates(shan_sp), 
+     cex.lab=.7,
+     groups.colors=c("red", "green" ,"blue", "brown", "pink", "orange"),
+     cex.circles=0.005,
+     add=TRUE)
+```
+
+```{r}
+groups_mat <- as.matrix(clust6$groups)
+
+shan_sf_spatialcluster <- cbind(shan_sf_cluster, 
+                                as.factor(groups_mat)) %>%
+  rename(`SP_CLUSTER`=`as.factor.groups_mat.`)
+qtm(shan_sf_spatialcluster, "SP_CLUSTER")
+```
+
+We can also use the ggparcoord function from the GGally package to plot a parallel coordinates plot to examine the distribution of the variables in each cluster.
+
+```{r}
+ggparcoord(data= shan_sf_spatialcluster,
+           columns=c(25:29),
+           mapping = aes(color = as.factor(`SP_CLUSTER`)),
+           scale="uniminmax",
+           alphaLines = 0.5,
+           boxplot=TRUE) +
+  labs(title = "Parallel Coordinates Plots of Technology Penetration by Spatial Clusters",
+       subtitle = "Standardised using Min-Max Normalisation",
+       xlab = "% Household Penetration") +
+  scale_colour_brewer(name="Cluster",
+                      labels = levels(shan_sf_spatialcluster$`SP_CLUSTER`),
+                      palette = "Dark2") +
+  theme(axis.text.x = element_text(angle = 45, size=8),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "none") +
+  facet_wrap(~ SP_CLUSTER)
 ```

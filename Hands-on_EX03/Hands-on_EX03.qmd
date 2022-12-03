@@ -21,15 +21,15 @@ There are the packages that will be used:
 
 -   **tmap**: creating map visualisations
 
--   **coorplot**, **ggpubr**, and **heatmaply**: multivariate data analysis and visualisation
+-   **coorplot**, **ggpubr**, **heatmaply** and **GGally**: multivariate data analysis and visualisation
 
--   **cluster**, **factoextra**, **dendextend** and **clustGeo**: cluster analysis
+-   **cluster**, **factoextra**, **dendextend, nbclust** and **clustGeo**: cluster analysis
 
 ```{r}
 #| output: false
 
 pacman::p_load(rgdal, spdep, tmap, sf, 
-               ggpubr, cluster, factoextra, NbClust,
+               ggpubr, ClustGeo, cluster, factoextra, NbClust,
                heatmaply, corrplot, psych, tidyverse,
                dendextend, GGally)
 ```
@@ -91,6 +91,7 @@ Join the aspatial data to the geospatial data.
 shan_sf <- left_join(shan_sf, 
                      ict_derived, 
                      by=c("TS_PCODE"="TS_PCODE"))
+  
 ```
 
 ## 2. Exploratory Data Analysis
@@ -188,9 +189,9 @@ We can see that technology penetration is not equal in the Shan state. Some town
 
 ## 3. Correlation Analysis
 
-Before conducting cluster analysis, we need to check for multicollinearity. Multicollinearity occurs when independent variables are linearly correlated. it is important to check for multicollinearity because it makes statistical inferences unreliable.
+Before conducting cluster analysis, we need to check for multicollinearity. Multicollinearity occurs when independent variables are linearly correlated. It is important to check for multicollinearity because it makes statistical inferences unreliable.
 
-The cor() function computes the correlation coefficients of each pair of variables. We can then use the corrplot.mix() function from the corrplot function to plot a correlogram showing the pairwise correlation values.
+The **cor()** function computes the correlation coefficients of each pair of variables. We can then use the **corrplot.mix()** function from the corrplot function to plot a correlogram showing the pairwise correlation values.
 
 ```{r}
 cluster_vars.cor = cor(ict_derived[,12:17])
@@ -206,7 +207,7 @@ We typically consider any correlation coefficient more than 0.85 or less than -0
 
 ## 4. Hierarchical Clustering
 
-First, we create a new dataframe with only the variables of interest. Note that we did not include INTERNET_PR because of the multicollinearity issue. Next, we assign the row names using the township names.
+First, we create a new dataframe with **only** the variables of interest. Note that we did not include INTERNET_PR because of the multicollinearity issue. Next, we assign the row names using the township names.
 
 ```{r}
 cluster_vars <- data.frame(ict_derived) %>%
@@ -245,20 +246,21 @@ The following code chunk plots the kernel density original and standardised vers
 
 ```{r}
 r <- ggplot(data=ict_derived, 
-             aes(x= RADIO_PR)) +
-  geom_density(
-                 color="black") +
+            aes(x= RADIO_PR)) +
+  geom_density(color="black",
+               fill="light blue") +
   ggtitle("Original Data")
 
 s <- ggplot(data=shan_ict.std, 
-       aes(x=RADIO_PR)) +
-  geom_density(
-                 color="black") +
+            aes(x=RADIO_PR)) +
+  geom_density(color="black",
+               fill="light blue") +
   ggtitle("Min-Max Standardisation")
 
 z <- ggplot(data=as.data.frame(shan_ict.z), 
-       aes(x=RADIO_PR)) +
-  geom_density(color="black") +
+            aes(x=RADIO_PR)) +
+  geom_density(color="black",
+               fill="light blue") +
   ggtitle("Z-score Standardisation")
 
 ggarrange(r, s, z,
@@ -531,8 +533,8 @@ We can also use the ggparcoord function from the GGally package to plot a parall
 ggparcoord(data= shan_sf_spatialcluster,
            columns=c(25:29),
            mapping = aes(color = as.factor(`SP_CLUSTER`)),
-           scale="uniminmax",
            alphaLines = 0.5,
+           scale="uniminmax",
            boxplot=TRUE) +
   labs(title = "Parallel Coordinates Plots of Technology Penetration by Spatial Clusters",
        subtitle = "Standardised using Min-Max Normalisation",
@@ -546,3 +548,142 @@ ggparcoord(data= shan_sf_spatialcluster,
         legend.position = "none") +
   facet_wrap(~ SP_CLUSTER)
 ```
+
+### Computing Spatially Constrained Clusters Using ClustGeo Method
+
+When only one similarity matrix is input, the `hclustgeo()` function of the GeoClust package conducts hierarchical clustering using the ward method similar to the `hclust()` function of base R.
+
+```{r}
+nongeo_cluster <- hclustgeo(proxmat)
+plot(nongeo_cluster, cex = 0.5)
+rect.hclust(nongeo_cluster, 
+            k = 6, 
+            border = 2:5)
+```
+
+Of course, since there is no spatial consideration, the clusters are fragmented as with the `hclust()` function previously.
+
+```{r}
+groups <- as.factor(cutree(nongeo_cluster, k=6))
+shan_sf_ngeo_cluster <- cbind(shan_sf, as.matrix(groups)) %>%
+  rename(`CLUSTER` = `as.matrix.groups.`)
+qtm(shan_sf_ngeo_cluster, "CLUSTER")
+```
+
+The ClustGeo method can "mix" both the attribute cost matrix and the spatial constraint matrix by varying a parameter alpha (ranged 0-1) to adjust the relative "weight" of each matrix.
+
+First, we need to compute the spatial distance matrix. In the SKATER method, edges were weighted only by attribute cost and did not consider distance. In the following code chunk, the st_distance() function is used to compute the pairwise distances between centroids of each polygon.
+
+```{r}
+dist <- st_distance(shan_sf, shan_sf)
+distmat <- as.dist(dist)
+```
+
+Next, the `choicealpha()` function helps to find the optimum weight of each of each matrix for the clustering. It takes 2 matrices d0 and d1 as input: d0 is the attribute space matrix (ie. cost) and d1 is the geographical weight matrix. The code chunk outputs 2 graphs, one using absolute values and one using normalised values. Qnorm on is a measure of homogenity within clusters in each of the dimensions of attribute space (black line) and geographic space (red line). As alpha increases, the homogeneity of clusters in terms of attributes decreases whereas the spatial homogeniety increases. The optimum mixing parameter with minimum compromise in the cohesion of clusters in terms of attribute space and geographical space.
+
+```{r}
+cr <- choicealpha(proxmat, 
+                  distmat, 
+                  range.alpha = seq(0, 1, 0.1), 
+                  K=6, 
+                  graph = TRUE)
+```
+
+Since our values are in the same units and approximately thre same magnitude, we can take the first graph using absolute values. The lines cross between 0.3-0.4 so alpha=0.3 or 0.4 would likely be the optimum mix.
+
+We can then use hclustgeo() to perform the clustering. This time, we provide two distance matrices as input and specify the alpha.
+
+```{r}
+clustG <- hclustgeo(proxmat, distmat, alpha = 0.3)
+groups <- as.factor(cutree(clustG, k=6))
+shan_sf_Gcluster <- cbind(shan_sf, as.matrix(groups)) %>%
+  rename(`CLUSTER` = `as.matrix.groups.`)
+
+```
+
+Spatial distribution of new clusters:
+
+```{r}
+qtm(shan_sf_Gcluster, "CLUSTER")
+```
+
+We can see that although the clusters are not necessarily contiguous with each other like in the SKATER method, they are still more cohesive than pure aspatial hierarchical clustering because of the mixing parameter alpha.
+
+We should also plot the attributes by cluster:
+
+```{r}
+ggparcoord(data= shan_sf_Gcluster,
+           columns=c(25:29),
+           mapping = aes(color = as.factor(`CLUSTER`)),
+           alphaLines = 0.5,
+           scale="uniminmax",
+           boxplot=TRUE) +
+  labs(title = "Parallel Coordinates Plots of Technology Penetration by Spatial Clusters",
+       subtitle = "Standardised using Min-Max Normalisation",
+       xlab = "% Household Penetration") +
+  scale_colour_brewer(name="Cluster",
+                      labels = levels(shan_sf_Gcluster$`CLUSTER`),
+                      palette = "Dark2") +
+  theme(axis.text.x = element_text(angle = 45, size=8),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "none") +
+  facet_wrap(~ CLUSTER)
+```
+
+**Characterisation of clusters**
+
+Cluster 1: Mid-high radio, low landline, low computer
+
+Cluster 2: Mid radio, high TV (south-east)
+
+Cluster 3: Mid radio, high TV (north)
+
+Cluster 4: Low landline, low computer
+
+Cluster 5: Low radio
+
+Cluster 6: High TV, high mobile phone, high computer
+
+For comparison, let's plot a few maps with different alpha values.
+
+```{r}
+alphavals <- c(seq(0, 1, 0.2))
+
+testalpha <- function(x){
+  clustG <- hclustgeo(proxmat, distmat, alpha = x)
+  groups <- as.factor(cutree(clustG, k=6))
+}
+
+results <- map(alphavals, testalpha)
+
+```
+
+Convert the results to a dataframe to bind to the polygon data.
+
+```{r}
+alphatest <- as.data.frame(do.call(cbind, results)) %>%
+   mutate(across(.cols = everything(), as.factor))
+
+names(alphatest) <- paste0("alpha", seq(0, 1, 0.2))
+shan_sf_alphatest <- cbind(shan_sf, alphatest)
+
+```
+
+Create a function to plot the results.
+
+```{r}
+#| fig-width: 14
+#| fig-height: 12
+
+autoplot <- function(x){
+  qtm(shan_sf_alphatest, x)
+}
+
+names <- names(alphatest)
+maps <- map(names, autoplot)
+
+tmap_arrange(maps[1:6], asp=1, ncols=3)
+```
+
+As alpha increases, the clusters become more cohesive in geographical space.

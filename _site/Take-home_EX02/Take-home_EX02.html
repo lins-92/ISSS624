@@ -122,6 +122,9 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
   }
 }</script>
 
+<script src="../site_libs/kePrint-0.0.1/kePrint.js"></script>
+<link href="../site_libs/lightable-0.0.1/lightable.css" rel="stylesheet">
+
 
 <link rel="stylesheet" href="../styles.css">
 </head>
@@ -179,6 +182,10 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
     <a class="dropdown-item" href="../Take-home_EX01/Take-home_EX01.html">
  <span class="dropdown-text">Take-home Exercise 1</span></a>
   </li>  
+        <li>
+    <a class="dropdown-item" href="../Take-home_EX01/Take-home_EX02.qmd">
+ <span class="dropdown-text">Take-home Exercise 2</span></a>
+  </li>  
     </ul>
   </li>
 </ul>
@@ -211,6 +218,16 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
   <li><a href="#loading-packages" id="toc-loading-packages" class="nav-link" data-scroll-target="#loading-packages">Loading Packages</a></li>
   <li><a href="#loading-data" id="toc-loading-data" class="nav-link" data-scroll-target="#loading-data">Loading Data</a></li>
   </ul></li>
+  <li><a href="#data-preparation" id="toc-data-preparation" class="nav-link" data-scroll-target="#data-preparation">2. Data Preparation</a></li>
+  <li><a href="#exploratory-data-analysis" id="toc-exploratory-data-analysis" class="nav-link" data-scroll-target="#exploratory-data-analysis">3. Exploratory Data Analysis</a></li>
+  <li><a href="#choosing-clustering-algorithm-and-number-of-clusters" id="toc-choosing-clustering-algorithm-and-number-of-clusters" class="nav-link" data-scroll-target="#choosing-clustering-algorithm-and-number-of-clusters">4. Choosing Clustering Algorithm and Number of Clusters</a></li>
+  <li><a href="#spatially-constrained-clustering" id="toc-spatially-constrained-clustering" class="nav-link" data-scroll-target="#spatially-constrained-clustering">5. Spatially Constrained Clustering</a>
+  <ul class="collapse">
+  <li><a href="#defining-the-neighbourhood" id="toc-defining-the-neighbourhood" class="nav-link" data-scroll-target="#defining-the-neighbourhood">Defining the Neighbourhood</a></li>
+  <li><a href="#initial-clustering" id="toc-initial-clustering" class="nav-link" data-scroll-target="#initial-clustering">Initial Clustering</a></li>
+  <li><a href="#refining-clusters-k7" id="toc-refining-clusters-k7" class="nav-link" data-scroll-target="#refining-clusters-k7">Refining Clusters (k=7)</a></li>
+  </ul></li>
+  <li><a href="#conclusion" id="toc-conclusion" class="nav-link" data-scroll-target="#conclusion">6. Conclusion</a></li>
   </ul></li>
   </ul>
 </nav>
@@ -261,10 +278,10 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <li><p><code>funModeling</code>: quick exploratory data analysis</p></li>
 </ul>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>pacman<span class="sc">::</span><span class="fu">p_load</span>(rgdal, spdep, tmap, sf, </span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>               ggpubr, cluster, factoextra, NbClust,</span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>               heatmaply, corrplot, psych, tidyverse,</span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>               dendextend, GGally, funModeling)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>pacman<span class="sc">::</span><span class="fu">p_load</span>(rgdal, spdep, tmap, sf, kableExtra,</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>               ggpubr, cluster, ClustGeo, factoextra, NbClust,</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>               heatmaply, corrplot, tidyverse,</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>               dendextend, GGally, funModeling, RColorBrewer)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 </section>
 <section id="loading-data" class="level3">
@@ -299,28 +316,25 @@ $ is_urban            &lt;lgl&gt; TRUE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE
 <div class="sourceCode cell-code" id="cb5"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>wp <span class="ot">&lt;-</span> <span class="fu">read_rds</span>(<span class="st">"data/WPdx_plus_Nigeria.rds"</span>) <span class="sc">%&gt;%</span></span>
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">rename_with</span>(<span class="sc">~</span><span class="fu">str_replace</span>(.x, <span class="st">"#"</span>, <span class="st">""</span>)) <span class="sc">%&gt;%</span></span>
 <span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">status_clean=</span><span class="fu">replace_na</span>(status_clean, <span class="st">"Unknown"</span>)) <span class="sc">%&gt;%</span></span>
-<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">status =</span> <span class="fu">case_when</span>(</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">nonfunctional=</span><span class="fu">ifelse</span>(</span>
 <span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    status_clean <span class="sc">%in%</span> <span class="fu">c</span>(<span class="st">"Abandoned/Decommissioned"</span>, </span>
 <span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>                        <span class="st">"Abandoned"</span>,</span>
 <span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>                        <span class="st">"Non-Functional"</span>,</span>
 <span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>                        <span class="st">"Non functional due to dry season"</span>,</span>
-<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>                        <span class="st">"Non-Functional due to dry season"</span>) <span class="sc">~</span> <span class="st">"Nonfunctional"</span>,</span>
-<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>    status_clean <span class="sc">==</span> <span class="st">"Unknown"</span> <span class="sc">~</span> <span class="st">"Unknown"</span>,</span>
-<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>    status_clean <span class="sc">%in%</span> <span class="fu">c</span>(<span class="st">"Functional"</span>, </span>
-<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a>                        <span class="st">"Functional but not in use"</span>,</span>
-<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a>                        <span class="st">"Functional but needs repair"</span>) <span class="sc">~</span> <span class="st">"Functional"</span></span>
-<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a>  )) <span class="sc">%&gt;%</span></span>
-<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(<span class="sc">!</span>status_clean)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>                        <span class="st">"Non-Functional due to dry season"</span>),</span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>    <span class="dv">1</span>, <span class="dv">0</span>))<span class="sc">%&gt;%</span></span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">functional=</span><span class="fu">ifelse</span>(</span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a>    status_clean <span class="sc">%in%</span> <span class="fu">c</span>(<span class="st">"Functional"</span>, </span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a>                        <span class="st">"Functional but not in use"</span>,</span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a>                        <span class="st">"Functional but needs repair"</span>),</span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a>    <span class="dv">1</span>, <span class="dv">0</span>)) <span class="sc">%&gt;%</span></span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">unknown=</span><span class="fu">ifelse</span>(status_clean<span class="sc">==</span><span class="st">"Unknown"</span>,</span>
+<span id="cb5-17"><a href="#cb5-17" aria-hidden="true" tabindex="-1"></a>                        <span class="dv">1</span>, <span class="dv">0</span>)) <span class="sc">%&gt;%</span></span>
+<span id="cb5-18"><a href="#cb5-18" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(<span class="sc">!</span>status_clean)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<p>Although some of the clustering variables have already been specified in the exercise write-up, we should still study the variables.</p>
+<p>Let’s visualise the other variables of interest as well.</p>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">freq</span>(wp, <span class="at">input=</span><span class="st">"is_urban"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output cell-output-stderr">
-<pre><code>Warning: The `&lt;scale&gt;` argument of `guides()` cannot be `FALSE`. Use "none" instead as
-of ggplot2 3.3.4.
-ℹ The deprecated feature was likely used in the funModeling package.
-  Please report the issue at &lt;https://github.com/pablo14/funModeling/issues&gt;.</code></pre>
-</div>
 <div class="cell-output-display">
 <p><img src="Take-home_EX02_files/figure-html/unnamed-chunk-5-1.png" class="img-fluid" width="672"></p>
 </div>
@@ -331,7 +345,7 @@ of ggplot2 3.3.4.
 </div>
 </div>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="fu">freq</span>(wp, <span class="at">input=</span><span class="st">"water_tech_clean"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="fu">freq</span>(wp, <span class="at">input=</span><span class="st">"water_tech_clean"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output-display">
 <p><img src="Take-home_EX02_files/figure-html/unnamed-chunk-6-1.png" class="img-fluid" width="672"></p>
 </div>
@@ -351,15 +365,585 @@ of ggplot2 3.3.4.
 12            Rope and Bucket         1       0.00          100.00</code></pre>
 </div>
 </div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb10"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(wp) <span class="sc">+</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_histogram</span>(<span class="fu">aes</span>(<span class="at">x=</span>usage_capacity),</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>                 <span class="at">colour=</span><span class="st">"black"</span>,</span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>                 <span class="at">fill=</span><span class="st">"light blue"</span>) <span class="sc">+</span></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_bw</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="Take-home_EX02_files/figure-html/unnamed-chunk-7-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb11"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sum</span>(<span class="fu">is.na</span>(wp<span class="sc">$</span>usage_capacity))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] 0</code></pre>
+</div>
+</div>
+<p>We need to recategorise water tech and usage capacity as well. The following code chunk creates new dummy variable for handpumps vs others and waterpumpts of low capacity (&lt;1000) vs high capacity (&gt;=1000). We only need one dummy variable each because there are only 2 categories each so the proportions would be collinear.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb13"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>wp_clean <span class="ot">&lt;-</span> wp <span class="sc">%&gt;%</span></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">handpump =</span> <span class="fu">case_when</span>(</span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>    water_tech_clean <span class="sc">%in%</span> </span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>      <span class="fu">c</span>(<span class="st">"Tapstand"</span>, <span class="st">"Rope and Bucket"</span>, <span class="st">"Mechanized Pump"</span>, </span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>        <span class="st">"Mechanized Pump - Solar"</span>, <span class="st">"Mechanized Pump - Diesel"</span>)<span class="sc">~</span><span class="dv">0</span>,</span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a>    <span class="fu">is.na</span>(water_tech_clean)<span class="sc">~</span><span class="dv">0</span>,</span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a>    <span class="cn">TRUE</span> <span class="sc">~</span> <span class="dv">1</span>)) <span class="sc">%&gt;%</span></span>
+<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">capacity_less1000 =</span> <span class="fu">case_when</span>(</span>
+<span id="cb13-9"><a href="#cb13-9" aria-hidden="true" tabindex="-1"></a>    usage_capacity<span class="sc">&lt;</span><span class="dv">1000</span><span class="sc">~</span> <span class="dv">1</span>,</span>
+<span id="cb13-10"><a href="#cb13-10" aria-hidden="true" tabindex="-1"></a>    usage_capacity<span class="sc">&gt;=</span><span class="dv">1000</span><span class="sc">~</span><span class="dv">0</span></span>
+<span id="cb13-11"><a href="#cb13-11" aria-hidden="true" tabindex="-1"></a>  )) <span class="sc">%&gt;%</span></span>
+<span id="cb13-12"><a href="#cb13-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">rural=</span><span class="fu">ifelse</span>(is_urban<span class="sc">==</span><span class="cn">TRUE</span>, <span class="dv">0</span> , <span class="dv">1</span>)) <span class="sc">%&gt;%</span></span>
+<span id="cb13-13"><a href="#cb13-13" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(<span class="sc">!</span><span class="fu">c</span>(<span class="dv">3</span><span class="sc">:</span><span class="dv">5</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
 <p>We can then convert the wp tibble dataframe to an sf dataframe. The GCS of the data is WGS1984 (EPSG:4326) as stated in the data dictionary.</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb11"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>wp_sf <span class="ot">&lt;-</span> <span class="fu">st_as_sf</span>(wp, </span>
-<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>                  <span class="at">coords =</span> <span class="fu">c</span>(<span class="st">"lon_deg"</span>, <span class="st">"lat_deg"</span>),</span>
-<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>                  <span class="at">crs=</span><span class="dv">4326</span>) </span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb14"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>wp_sf <span class="ot">&lt;-</span> <span class="fu">st_as_sf</span>(wp_clean, </span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>                  <span class="at">coords =</span> <span class="fu">c</span>(<span class="st">"lon_deg"</span>, <span class="st">"lat_deg"</span>),</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>                  <span class="at">crs=</span><span class="dv">4326</span>) </span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-
-
+<p>Next, let’s import the administrative boundary dataset and plot both the administrative boundary and waterpoints.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb15"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>adm_bound <span class="ot">&lt;-</span> <span class="fu">st_read</span>(<span class="at">dsn=</span><span class="st">"data"</span>,</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>               <span class="at">layer=</span><span class="st">"geoBoundaries-NGA-ADM2"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Reading layer `geoBoundaries-NGA-ADM2' from data source 
+  `D:\lins-92\ISSS624\Take-home_EX02\data' using driver `ESRI Shapefile'
+Simple feature collection with 774 features and 5 fields
+Geometry type: MULTIPOLYGON
+Dimension:     XY
+Bounding box:  xmin: 2.668534 ymin: 4.273007 xmax: 14.67882 ymax: 13.89442
+Geodetic CRS:  WGS 84</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb17"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="fu">tm_shape</span>(adm_bound) <span class="sc">+</span></span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">tm_polygons</span>() <span class="sc">+</span></span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a><span class="fu">tm_shape</span>(wp_sf) <span class="sc">+</span></span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">tm_symbols</span>(<span class="at">size=</span><span class="fl">0.1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="Take-home_EX02_files/figure-html/unnamed-chunk-12-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
 </section>
+</section>
+<section id="data-preparation" class="level2">
+<h2 class="anchored" data-anchor-id="data-preparation">2. Data Preparation</h2>
+<p>The next step is to associate the location (ie. administrative area) to each waterpoint. I will use st_join() to perform a spatial join to relate polygon IDs to each waterpoint in the wp_st dataset by its location (note that the shapeName variable contains duplicates and should not be used for this step). The <code>join=st_intersects()</code> argument tells R the type of spatial join to use. Note that both datasets must have the same projection (WGS1984), which is why we have not transformed either dataset yet.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb18"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>wp_sf <span class="ot">&lt;-</span> <span class="fu">st_join</span>(<span class="at">x =</span> wp_sf,</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>                 <span class="at">y =</span> adm_bound,</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>                 <span class="at">join =</span> st_intersects,</span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>                 <span class="at">left =</span> <span class="cn">TRUE</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>As found in <a href="https://lins-92-isss624.netlify.app/take-home_ex01/take-home_ex01#status-of-waterpoints">take-home exercise 1</a>, there should be 29 missing values in polygon IDs where the waterpoings actually fall outside of the boundary of Nigeria.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb19"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sum</span>(<span class="fu">is.na</span>(wp_sf<span class="sc">$</span>shapeID))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] 29</code></pre>
+</div>
+</div>
+<p>The next step is to collapse the dataset by administrative area to get the proportion and number of waterpoints by the relevant variables. First, we need to strip the geometry from the dataset in order to manipulate it.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>joinvars <span class="ot">&lt;-</span> wp_sf <span class="sc">%&gt;%</span></span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">st_set_geometry</span>(<span class="cn">NULL</span>) <span class="sc">%&gt;%</span></span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(shapeID)) <span class="sc">%&gt;%</span></span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">group_by</span>(shapeID) <span class="sc">%&gt;%</span></span>
+<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">summarise</span>(<span class="at">total =</span> <span class="fu">n</span>(),</span>
+<span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a>            <span class="at">functional=</span><span class="fu">sum</span>(functional),</span>
+<span id="cb21-7"><a href="#cb21-7" aria-hidden="true" tabindex="-1"></a>            <span class="at">nonfunctional=</span><span class="fu">sum</span>(nonfunctional),</span>
+<span id="cb21-8"><a href="#cb21-8" aria-hidden="true" tabindex="-1"></a>            <span class="at">unknown=</span><span class="fu">sum</span>(unknown),</span>
+<span id="cb21-9"><a href="#cb21-9" aria-hidden="true" tabindex="-1"></a>            <span class="at">handpump=</span><span class="fu">sum</span>(handpump),</span>
+<span id="cb21-10"><a href="#cb21-10" aria-hidden="true" tabindex="-1"></a>            <span class="at">capacity_less1000=</span><span class="fu">sum</span>(capacity_less1000),</span>
+<span id="cb21-11"><a href="#cb21-11" aria-hidden="true" tabindex="-1"></a>            <span class="at">rural =</span> <span class="fu">sum</span>(rural)) <span class="sc">%&gt;%</span></span>
+<span id="cb21-12"><a href="#cb21-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ungroup</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>Let’s check the data. The dataset now contains counts of waterpumps that meet the respective criteria.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb22"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(joinvars, <span class="dv">5</span>) <span class="sc">%&gt;%</span></span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">kable</span>() <span class="sc">%&gt;%</span></span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">kable_styling</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+
+<table class="table" style="margin-left: auto; margin-right: auto;">
+ <thead>
+  <tr>
+   <th style="text-align:left;"> shapeID </th>
+   <th style="text-align:right;"> total </th>
+   <th style="text-align:right;"> functional </th>
+   <th style="text-align:right;"> nonfunctional </th>
+   <th style="text-align:right;"> unknown </th>
+   <th style="text-align:right;"> handpump </th>
+   <th style="text-align:right;"> capacity_less1000 </th>
+   <th style="text-align:right;"> rural </th>
+  </tr>
+ </thead>
+<tbody>
+  <tr>
+   <td style="text-align:left;"> NGA-ADM2-72505758B10049836 </td>
+   <td style="text-align:right;"> 70 </td>
+   <td style="text-align:right;"> 31 </td>
+   <td style="text-align:right;"> 39 </td>
+   <td style="text-align:right;"> 0 </td>
+   <td style="text-align:right;"> 34 </td>
+   <td style="text-align:right;"> 34 </td>
+   <td style="text-align:right;"> 0 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> NGA-ADM2-72505758B10063467 </td>
+   <td style="text-align:right;"> 118 </td>
+   <td style="text-align:right;"> 50 </td>
+   <td style="text-align:right;"> 38 </td>
+   <td style="text-align:right;"> 30 </td>
+   <td style="text-align:right;"> 43 </td>
+   <td style="text-align:right;"> 73 </td>
+   <td style="text-align:right;"> 29 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> NGA-ADM2-72505758B10065661 </td>
+   <td style="text-align:right;"> 178 </td>
+   <td style="text-align:right;"> 104 </td>
+   <td style="text-align:right;"> 51 </td>
+   <td style="text-align:right;"> 23 </td>
+   <td style="text-align:right;"> 122 </td>
+   <td style="text-align:right;"> 146 </td>
+   <td style="text-align:right;"> 178 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> NGA-ADM2-72505758B10302610 </td>
+   <td style="text-align:right;"> 201 </td>
+   <td style="text-align:right;"> 64 </td>
+   <td style="text-align:right;"> 53 </td>
+   <td style="text-align:right;"> 84 </td>
+   <td style="text-align:right;"> 94 </td>
+   <td style="text-align:right;"> 179 </td>
+   <td style="text-align:right;"> 201 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> NGA-ADM2-72505758B11317593 </td>
+   <td style="text-align:right;"> 100 </td>
+   <td style="text-align:right;"> 51 </td>
+   <td style="text-align:right;"> 49 </td>
+   <td style="text-align:right;"> 0 </td>
+   <td style="text-align:right;"> 19 </td>
+   <td style="text-align:right;"> 20 </td>
+   <td style="text-align:right;"> 0 </td>
+  </tr>
+</tbody>
+</table>
+
+</div>
+</div>
+<p>We still need to transform some of the variables into proportions out of total waterpoints in the area. We do not need to keep the absolute numbers except for the number of functional and non-functional waterpoints.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>joinvars <span class="ot">&lt;-</span> joinvars <span class="sc">%&gt;%</span></span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">func_pr =</span> functional<span class="sc">/</span>total,</span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>         <span class="at">nonfunc_pr =</span> nonfunctional<span class="sc">/</span>total,</span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a>         <span class="at">handpump_pr =</span> handpump<span class="sc">/</span>total,</span>
+<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a>         <span class="at">capacity_less1000_pr =</span> capacity_less1000<span class="sc">/</span>total,</span>
+<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a>         <span class="at">rural_pr =</span> rural<span class="sc">/</span>total)  <span class="sc">%&gt;%</span></span>
+<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(<span class="fu">c</span>(<span class="dv">1</span>, <span class="dv">3</span><span class="sc">:</span><span class="dv">4</span>, <span class="dv">9</span><span class="sc">:</span><span class="dv">13</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>Now that we have all the required cluster variables, we can join it back to the administrative boundary dataset using <code>left_join()</code> for mapping later. We can also transform the CRS to EPSG:26391 since we have completed the joining step.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb24"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>adm_wp <span class="ot">&lt;-</span> <span class="fu">left_join</span>(<span class="at">x=</span>adm_bound,</span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>                    <span class="at">y=</span>joinvars,</span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>                    <span class="at">by=</span><span class="st">"shapeID"</span>) <span class="sc">%&gt;%</span></span>
+<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">st_transform</span>(<span class="at">crs =</span> <span class="dv">26391</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</section>
+<section id="exploratory-data-analysis" class="level2">
+<h2 class="anchored" data-anchor-id="exploratory-data-analysis">3. Exploratory Data Analysis</h2>
+<p>We can examine the distribution of the cluster variables. The <code>plot_num()</code> function of funModeling can automatically plot the histograms of all numeric variables in a dataset.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb25"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plot_num</span>(joinvars)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="Take-home_EX02_files/figure-html/unnamed-chunk-19-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<p>The distribution of absolute number of functional and non-functional waterpoints is right skewed. The proportion of rural waterpoints is also left skewed but not as much as handpump proportion. Nonetheless, the hierarchical clustering technique is not as sensitive to outliers so there is no need to address outliers.</p>
+<p>The following code chunk plots the cluster variables spatially by creating a function. The function is looped over the names of variables of interest using the <code>map()</code> function.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb26"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>autoplot <span class="ot">&lt;-</span> <span class="cf">function</span>(x){</span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">tm_shape</span>(adm_wp) <span class="sc">+</span></span>
+<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a>    <span class="fu">tm_fill</span>(<span class="at">col=</span>x,</span>
+<span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a>            <span class="at">style=</span><span class="st">"pretty"</span>) <span class="sc">+</span></span>
+<span id="cb26-5"><a href="#cb26-5" aria-hidden="true" tabindex="-1"></a>    <span class="fu">tm_borders</span>(<span class="at">alpha=</span><span class="fl">0.5</span>)</span>
+<span id="cb26-6"><a href="#cb26-6" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb26-7"><a href="#cb26-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-8"><a href="#cb26-8" aria-hidden="true" tabindex="-1"></a>eda_maps <span class="ot">&lt;-</span> <span class="fu">map</span>(<span class="fu">names</span>(joinvars)[<span class="dv">2</span><span class="sc">:</span><span class="dv">8</span>], autoplot)</span>
+<span id="cb26-9"><a href="#cb26-9" aria-hidden="true" tabindex="-1"></a><span class="fu">tmap_arrange</span>(eda_maps, <span class="at">asp=</span><span class="dv">1</span>, <span class="at">ncols=</span><span class="dv">3</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="Take-home_EX02_files/figure-html/unnamed-chunk-20-1.png" class="img-fluid" width="1344"></p>
+</div>
+</div>
+<p>There are a few observations we can draw from the maps:</p>
+<ul>
+<li>There are regions with missing data. These regions will need to be dropped.</li>
+</ul>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb27"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>adm_wp <span class="ot">&lt;-</span> adm_wp <span class="sc">%&gt;%</span></span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(functional))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<ul>
+<li><p>There are some regions with high absolute number of functional and non-functional waterpoints.</p></li>
+<li><p>Most regions have high proportion of rural waterpoints.</p></li>
+<li><p>Regions in the north tend to have higher proportion of handpumps.</p></li>
+<li><p>In general, regions in the north have a higher proportion of functional waterpoints and regions in the south have a higher proportion of non-functional waterpoints.</p></li>
+</ul>
+<p>Since most of the variables are proportions, their range is from 0-1. 2 variables (functional and nonfunctional) are still in absolute numbers so they need to be standardised such that their magnitude is not too large compared to the other variables, which would affect the results of the hierarchical clustering. The following code chunk creates a new dataset cluster_vars in the format needed to create the proximity matrix for hierarchical clustering and standardises functional and nonfunctional using min-max normalisation.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb28"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>cluster_vars <span class="ot">&lt;-</span> joinvars <span class="sc">%&gt;%</span></span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">functional =</span> <span class="fu">normalize</span>(functional),</span>
+<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a>         <span class="at">nonfunctional =</span> <span class="fu">normalize</span>(nonfunctional))</span>
+<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a><span class="fu">row.names</span>(cluster_vars) <span class="ot">&lt;-</span> cluster_vars<span class="sc">$</span><span class="st">"shapeID"</span></span>
+<span id="cb28-6"><a href="#cb28-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-7"><a href="#cb28-7" aria-hidden="true" tabindex="-1"></a>cluster_vars <span class="ot">&lt;-</span> cluster_vars <span class="sc">%&gt;%</span></span>
+<span id="cb28-8"><a href="#cb28-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(<span class="sc">!</span><span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>Before proceeding with the clustering, we need to check for multicollinearity among the variables of interest.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb29"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>cluster_vars.cor <span class="ot">=</span> <span class="fu">cor</span>(joinvars[,<span class="dv">2</span><span class="sc">:</span><span class="dv">8</span>])</span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a><span class="fu">corrplot.mixed</span>(cluster_vars.cor,</span>
+<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a>         <span class="at">lower =</span> <span class="st">"ellipse"</span>, </span>
+<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a>               <span class="at">upper =</span> <span class="st">"number"</span>,</span>
+<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a>               <span class="at">tl.pos =</span> <span class="st">"lt"</span>,</span>
+<span id="cb29-6"><a href="#cb29-6" aria-hidden="true" tabindex="-1"></a>               <span class="at">diag =</span> <span class="st">"l"</span>,</span>
+<span id="cb29-7"><a href="#cb29-7" aria-hidden="true" tabindex="-1"></a>               <span class="at">tl.col =</span> <span class="st">"black"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="Take-home_EX02_files/figure-html/unnamed-chunk-23-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<p>The correlation coefficient for handpump proportion and proportio of low capacity waterpoints is 0.82, indicating that there is multicollinearity. The higher the proportion of handpumps, the higher the proportion of low capacity waterpoints. I will drop the handpump portion variable and keep the capacity variable.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb30"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>cluster_vars <span class="ot">&lt;-</span> cluster_vars <span class="sc">%&gt;%</span></span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(<span class="sc">!</span><span class="dv">5</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</section>
+<section id="choosing-clustering-algorithm-and-number-of-clusters" class="level2">
+<h2 class="anchored" data-anchor-id="choosing-clustering-algorithm-and-number-of-clusters">4. Choosing Clustering Algorithm and Number of Clusters</h2>
+<p>The dist() function is used to create the proximity matrix.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb31"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a>proxmat <span class="ot">&lt;-</span> <span class="fu">dist</span>(cluster_vars, <span class="at">method=</span><span class="st">"euclidean"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>The following code chunk tests the different agglomerative clustering algorithm to determine the best method. Values closer to 1 indicate a stronger clustering structure.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb32"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>m <span class="ot">&lt;-</span> <span class="fu">c</span>( <span class="st">"average"</span>, <span class="st">"single"</span>, <span class="st">"complete"</span>, <span class="st">"ward"</span>)</span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a><span class="fu">names</span>(m) <span class="ot">&lt;-</span> <span class="fu">c</span>( <span class="st">"average"</span>, <span class="st">"single"</span>, <span class="st">"complete"</span>, <span class="st">"ward"</span>)</span>
+<span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-4"><a href="#cb32-4" aria-hidden="true" tabindex="-1"></a>ac <span class="ot">&lt;-</span> <span class="cf">function</span>(x) {</span>
+<span id="cb32-5"><a href="#cb32-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">agnes</span>(cluster_vars, <span class="at">method =</span> x)<span class="sc">$</span>ac</span>
+<span id="cb32-6"><a href="#cb32-6" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb32-7"><a href="#cb32-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-8"><a href="#cb32-8" aria-hidden="true" tabindex="-1"></a><span class="fu">map_dbl</span>(m, ac)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>  average    single  complete      ward 
+0.9115986 0.8239627 0.9415135 0.9888309 </code></pre>
+</div>
+</div>
+<p>The ward method is the optimum method.</p>
+<p>Next, we need to determine the optimum number of clusters. The following code chunk recommends the optimum number of clusters using the gap statistic method.</p>
+<p>The <a href="http://www.web.stanford.edu/~hastie/Papers/gap.pdf"><strong>gap statistic</strong></a> compares the total within cluster variation for different values of k with their expected values under null reference distribution (distribution with no obvious clustering) of the data. The estimated optimal clusters (k) will be value that maximises the gap statistic, indicating that there is greatest difference between the clustering of the data and the clustering of a random dataset at that number of k.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb34"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">12345</span>)</span>
+<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a>gap_stat <span class="ot">&lt;-</span> <span class="fu">clusGap</span>(cluster_vars, </span>
+<span id="cb34-3"><a href="#cb34-3" aria-hidden="true" tabindex="-1"></a>                    <span class="at">FUN =</span> hcut, </span>
+<span id="cb34-4"><a href="#cb34-4" aria-hidden="true" tabindex="-1"></a>                    <span class="at">K.max =</span> <span class="dv">10</span>, </span>
+<span id="cb34-5"><a href="#cb34-5" aria-hidden="true" tabindex="-1"></a>                    <span class="at">B =</span> <span class="dv">50</span>)</span>
+<span id="cb34-6"><a href="#cb34-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb34-7"><a href="#cb34-7" aria-hidden="true" tabindex="-1"></a><span class="fu">fviz_gap_stat</span>(gap_stat)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="Take-home_EX02_files/figure-html/unnamed-chunk-27-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<p>Now that we have determined that we should use the Ward method to join clusters and that the optimum number of clusters is 4, we can try aspatial hierarchical clustering. Note that the “ward” method in the <code>agnes()</code> function is called “ward.D2” in the <a href="https://www.rdocumentation.org/packages/stats/versions/3.6.2/topics/hclust"><code>hclust()</code></a> function.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb35"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a>hclust_ward <span class="ot">&lt;-</span> <span class="fu">hclust</span>(proxmat, <span class="at">method =</span> <span class="st">'ward.D2'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb36"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a>groups <span class="ot">&lt;-</span> <span class="fu">as.factor</span>(<span class="fu">cutree</span>(hclust_ward, <span class="at">k=</span><span class="dv">4</span>))</span>
+<span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a>adm_wp_cluster <span class="ot">&lt;-</span> <span class="fu">cbind</span>(adm_wp, <span class="fu">as.matrix</span>(groups)) <span class="sc">%&gt;%</span></span>
+<span id="cb36-3"><a href="#cb36-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">rename</span>(<span class="st">`</span><span class="at">HCLUSTER</span><span class="st">`</span><span class="ot">=</span><span class="st">`</span><span class="at">as.matrix.groups.</span><span class="st">`</span>)</span>
+<span id="cb36-4"><a href="#cb36-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb36-5"><a href="#cb36-5" aria-hidden="true" tabindex="-1"></a><span class="fu">ggparcoord</span>(<span class="at">data=</span> adm_wp_cluster,</span>
+<span id="cb36-6"><a href="#cb36-6" aria-hidden="true" tabindex="-1"></a>           <span class="at">columns=</span><span class="fu">c</span>(<span class="dv">6</span><span class="sc">:</span><span class="dv">9</span>, <span class="dv">11</span><span class="sc">:</span><span class="dv">12</span>),</span>
+<span id="cb36-7"><a href="#cb36-7" aria-hidden="true" tabindex="-1"></a>           <span class="at">mapping =</span> <span class="fu">aes</span>(<span class="at">color =</span> <span class="fu">as.factor</span>(<span class="st">`</span><span class="at">HCLUSTER</span><span class="st">`</span>)),</span>
+<span id="cb36-8"><a href="#cb36-8" aria-hidden="true" tabindex="-1"></a>           <span class="at">alphaLines =</span> <span class="fl">0.3</span>,</span>
+<span id="cb36-9"><a href="#cb36-9" aria-hidden="true" tabindex="-1"></a>           <span class="at">scale=</span><span class="st">"uniminmax"</span>,</span>
+<span id="cb36-10"><a href="#cb36-10" aria-hidden="true" tabindex="-1"></a>           <span class="at">boxplot=</span><span class="cn">TRUE</span>) <span class="sc">+</span></span>
+<span id="cb36-11"><a href="#cb36-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">title =</span> <span class="st">"Parallel Coordinates Plots of Waterpoint Availability by Hierarchical Clusters (k=4)"</span>,</span>
+<span id="cb36-12"><a href="#cb36-12" aria-hidden="true" tabindex="-1"></a>       <span class="at">subtitle =</span> <span class="st">"Standardised using Min-Max Normalisation"</span>,</span>
+<span id="cb36-13"><a href="#cb36-13" aria-hidden="true" tabindex="-1"></a>       <span class="at">xlab =</span> <span class="st">"Cluster Variables"</span>) <span class="sc">+</span></span>
+<span id="cb36-14"><a href="#cb36-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_colour_brewer</span>(<span class="at">name=</span><span class="st">"Cluster"</span>,</span>
+<span id="cb36-15"><a href="#cb36-15" aria-hidden="true" tabindex="-1"></a>                      <span class="at">labels =</span> <span class="fu">levels</span>(adm_wp_cluster<span class="sc">$</span><span class="st">`</span><span class="at">HCLUSTER</span><span class="st">`</span>),</span>
+<span id="cb36-16"><a href="#cb36-16" aria-hidden="true" tabindex="-1"></a>                      <span class="at">palette =</span> <span class="st">"Set3"</span>) <span class="sc">+</span></span>
+<span id="cb36-17"><a href="#cb36-17" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme</span>(<span class="at">axis.text.x =</span> <span class="fu">element_text</span>(<span class="at">angle =</span> <span class="dv">45</span>, <span class="at">size=</span><span class="dv">8</span>),</span>
+<span id="cb36-18"><a href="#cb36-18" aria-hidden="true" tabindex="-1"></a>        <span class="at">axis.title.x =</span> <span class="fu">element_blank</span>(),</span>
+<span id="cb36-19"><a href="#cb36-19" aria-hidden="true" tabindex="-1"></a>        <span class="at">axis.title.y =</span> <span class="fu">element_blank</span>(),</span>
+<span id="cb36-20"><a href="#cb36-20" aria-hidden="true" tabindex="-1"></a>        <span class="at">legend.position =</span> <span class="st">"none"</span>) <span class="sc">+</span></span>
+<span id="cb36-21"><a href="#cb36-21" aria-hidden="true" tabindex="-1"></a>  <span class="fu">facet_wrap</span>(<span class="sc">~</span> HCLUSTER)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="Take-home_EX02_files/figure-html/unnamed-chunk-29-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<p>We can attempt to characterise the 4 clusters from the parallel coordinates plots:</p>
+<ul>
+<li><p>Green cluster 1 (mix of urban and rural, average condition): Mid prop functional and non-functional, low-mid prop low capacity, low-mid prop rural</p></li>
+<li><p>Yellow cluster 2 (mostly rural, poor condition): Low-mid prop non-functional, high prop rural</p></li>
+<li><p>Purple cluster 3 (mix of urban and rural, better condition): High prop functional, low prop non-functional, low-mid prop rural</p></li>
+<li><p>Red cluster 4 (few waterpoints): Low absolute functional and non-functional</p></li>
+</ul>
+<p>However, the clusters do not appear to be very distinct. Although the algorithm has recommended 4 as the optimum number of clusters, the results may not be easy to interpret because there is overlap in the distribution of the variables for each cluster.</p>
+<p>The final cluster assignment should be informed by whether it can adequately address the research question (recommending areas to improve water supply/maintenance in this case) and intepretability. While increasing the number of clusters improves the within cluster cohesion, having too many clusters also makes interpretation difficult.</p>
+<p>Nonetheless, since we are more interested in regionalisation than pure hierarchical clustering, we proceed to plot the 4 clusters spatially first. We can keep in mind that k=7 is the next best number of clusters when checking the spatial clustering results.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb37"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a><span class="fu">qtm</span>(adm_wp_cluster, <span class="st">"HCLUSTER"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="Take-home_EX02_files/figure-html/unnamed-chunk-30-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<p>As expected, the clusters are fragmented spatially.</p>
+</section>
+<section id="spatially-constrained-clustering" class="level2">
+<h2 class="anchored" data-anchor-id="spatially-constrained-clustering">5. Spatially Constrained Clustering</h2>
+<p>For spatially constrained clustering, I will use the ClustGeo method. It mixes 2 distance matrices, one in terms of attribute space and the other in terms of geographical distance, to conduct clustering that considers both spatial structure and attribute similarity/dissimilarity.</p>
+<p>This is chosen over the SKATER method where the neighbourhood structure is rigidly defined so clusters can only contain neighbours. The ClustGeo method will allow more flexibility in the spatial structure to consider cohesion within clusters and separation between clsuters in terms of attributes.</p>
+<section id="defining-the-neighbourhood" class="level3">
+<h3 class="anchored" data-anchor-id="defining-the-neighbourhood">Defining the Neighbourhood</h3>
+<p>In order to conduct spatially constrained clustering, we need to define the spatial structure in the form of a distance matrix for the ClustGeo method.</p>
+<p>The <code>st_distance()</code> computes pair-wise distance between observations of 2 geospatial datasets. Since I want pair-wise distances between each administration region, I apply <code>st_distance</code> on itself. We then need to convert it to a dist object.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb38"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a>dist <span class="ot">&lt;-</span> <span class="fu">st_distance</span>(adm_wp, adm_wp)</span>
+<span id="cb38-2"><a href="#cb38-2" aria-hidden="true" tabindex="-1"></a>distmat <span class="ot">&lt;-</span> <span class="fu">as.dist</span>(dist)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</section>
+<section id="initial-clustering" class="level3">
+<h3 class="anchored" data-anchor-id="initial-clustering">Initial Clustering</h3>
+<p>choicealpha() helps to identify the optimum mix of the two distance matrices based on homogenity within clusters in each of the dimensions of attribute space (black line) and geographic space (red line). The optimum mixing parameter achieves minimum compromise in the cohesion of clusters in terms of attribute space and geographical space.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb39"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a><span class="fu">choicealpha</span>(proxmat, </span>
+<span id="cb39-2"><a href="#cb39-2" aria-hidden="true" tabindex="-1"></a>            distmat, </span>
+<span id="cb39-3"><a href="#cb39-3" aria-hidden="true" tabindex="-1"></a>            <span class="at">range.alpha =</span> <span class="fu">seq</span>(<span class="dv">0</span>, <span class="dv">1</span>, <span class="fl">0.1</span>), </span>
+<span id="cb39-4"><a href="#cb39-4" aria-hidden="true" tabindex="-1"></a>            <span class="at">K=</span><span class="dv">4</span>, </span>
+<span id="cb39-5"><a href="#cb39-5" aria-hidden="true" tabindex="-1"></a>            <span class="at">graph =</span> <span class="cn">TRUE</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="Take-home_EX02_files/figure-html/unnamed-chunk-32-1.png" class="img-fluid" width="672"></p>
+</div>
+<div class="cell-output-display">
+<p><img src="Take-home_EX02_files/figure-html/unnamed-chunk-32-2.png" class="img-fluid" width="672"></p>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>$Q
+                   Q0          Q1
+alpha=0   0.517161360 0.003495416
+alpha=0.1 0.519842962 0.004787772
+alpha=0.2 0.501618820 0.032982608
+alpha=0.3 0.439522230 0.326534122
+alpha=0.4 0.354092532 0.420469977
+alpha=0.5 0.183885221 0.617781433
+alpha=0.6 0.174948153 0.648905612
+alpha=0.7 0.006702762 0.752189196
+alpha=0.8 0.005280607 0.792751369
+alpha=0.9 0.004321980 0.796393894
+alpha=1   0.001908642 0.771955198
+
+$Qnorm
+               Q0norm      Q1norm
+alpha=0   1.000000000 0.004528003
+alpha=0.1 1.005185233 0.006202137
+alpha=0.2 0.969946441 0.042726066
+alpha=0.3 0.849874457 0.422996208
+alpha=0.4 0.684684820 0.544681839
+alpha=0.5 0.355566435 0.800281460
+alpha=0.6 0.338285430 0.840600094
+alpha=0.7 0.012960678 0.974394884
+alpha=0.8 0.010210754 1.026939608
+alpha=0.9 0.008357120 1.031658180
+alpha=1   0.003690612 1.000000000
+
+$range.alpha
+ [1] 0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0
+
+$K
+[1] 4
+
+attr(,"class")
+[1] "choicealpha"</code></pre>
+</div>
+</div>
+<p>The optimum value of alpha is between 0.4 - 0.5. Let’s set it at 0.45.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb41"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb41-1"><a href="#cb41-1" aria-hidden="true" tabindex="-1"></a>clustG <span class="ot">&lt;-</span> <span class="fu">hclustgeo</span>(proxmat, distmat, <span class="at">alpha =</span> <span class="fl">0.45</span>)</span>
+<span id="cb41-2"><a href="#cb41-2" aria-hidden="true" tabindex="-1"></a>groups <span class="ot">&lt;-</span> <span class="fu">as.factor</span>(<span class="fu">cutree</span>(clustG, <span class="at">k=</span><span class="dv">4</span>))</span>
+<span id="cb41-3"><a href="#cb41-3" aria-hidden="true" tabindex="-1"></a>adm_wp_cluster <span class="ot">&lt;-</span><span class="fu">cbind</span>(adm_wp_cluster, <span class="fu">as.matrix</span>(groups)) <span class="sc">%&gt;%</span></span>
+<span id="cb41-4"><a href="#cb41-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">rename</span>(<span class="st">`</span><span class="at">GCLUSTER4</span><span class="st">`</span> <span class="ot">=</span> <span class="st">`</span><span class="at">as.matrix.groups.</span><span class="st">`</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>Let’s examine the spatial distribution of clusters and the distribution of the cluster variables within each cluster.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb42"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a>gclust4.map <span class="ot">&lt;-</span> <span class="fu">qtm</span>(adm_wp_cluster, <span class="st">"GCLUSTER4"</span>)</span>
+<span id="cb42-2"><a href="#cb42-2" aria-hidden="true" tabindex="-1"></a>gclust4.map</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="Take-home_EX02_files/figure-html/unnamed-chunk-34-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb43"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb43-1"><a href="#cb43-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggparcoord</span>(<span class="at">data=</span> adm_wp_cluster,</span>
+<span id="cb43-2"><a href="#cb43-2" aria-hidden="true" tabindex="-1"></a>           <span class="at">columns=</span><span class="fu">c</span>(<span class="dv">6</span><span class="sc">:</span><span class="dv">9</span>, <span class="dv">11</span><span class="sc">:</span><span class="dv">12</span>),</span>
+<span id="cb43-3"><a href="#cb43-3" aria-hidden="true" tabindex="-1"></a>           <span class="at">mapping =</span> <span class="fu">aes</span>(<span class="at">color =</span> <span class="fu">as.factor</span>(<span class="st">`</span><span class="at">GCLUSTER4</span><span class="st">`</span>)),</span>
+<span id="cb43-4"><a href="#cb43-4" aria-hidden="true" tabindex="-1"></a>           <span class="at">alphaLines =</span> <span class="fl">0.3</span>,</span>
+<span id="cb43-5"><a href="#cb43-5" aria-hidden="true" tabindex="-1"></a>           <span class="at">scale=</span><span class="st">"uniminmax"</span>,</span>
+<span id="cb43-6"><a href="#cb43-6" aria-hidden="true" tabindex="-1"></a>           <span class="at">boxplot=</span><span class="cn">TRUE</span>) <span class="sc">+</span></span>
+<span id="cb43-7"><a href="#cb43-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">title =</span> <span class="st">"Parallel Coordinates Plots of Waterpoint Availability by Spatial Clusters (k=4)"</span>,</span>
+<span id="cb43-8"><a href="#cb43-8" aria-hidden="true" tabindex="-1"></a>       <span class="at">subtitle =</span> <span class="st">"Standardised using Min-Max Normalisation"</span>,</span>
+<span id="cb43-9"><a href="#cb43-9" aria-hidden="true" tabindex="-1"></a>       <span class="at">xlab =</span> <span class="st">"Cluster Variables"</span>) <span class="sc">+</span></span>
+<span id="cb43-10"><a href="#cb43-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_colour_brewer</span>(<span class="at">name=</span><span class="st">"Cluster"</span>,</span>
+<span id="cb43-11"><a href="#cb43-11" aria-hidden="true" tabindex="-1"></a>                      <span class="at">labels =</span> <span class="fu">levels</span>(adm_wp_cluster<span class="sc">$</span><span class="st">`</span><span class="at">GCLUSTER4</span><span class="st">`</span>),</span>
+<span id="cb43-12"><a href="#cb43-12" aria-hidden="true" tabindex="-1"></a>                      <span class="at">palette =</span> <span class="st">"Set3"</span>) <span class="sc">+</span></span>
+<span id="cb43-13"><a href="#cb43-13" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme</span>(<span class="at">axis.text.x =</span> <span class="fu">element_text</span>(<span class="at">angle =</span> <span class="dv">45</span>, <span class="at">size=</span><span class="dv">8</span>),</span>
+<span id="cb43-14"><a href="#cb43-14" aria-hidden="true" tabindex="-1"></a>        <span class="at">axis.title.x =</span> <span class="fu">element_blank</span>(),</span>
+<span id="cb43-15"><a href="#cb43-15" aria-hidden="true" tabindex="-1"></a>        <span class="at">axis.title.y =</span> <span class="fu">element_blank</span>(),</span>
+<span id="cb43-16"><a href="#cb43-16" aria-hidden="true" tabindex="-1"></a>        <span class="at">legend.position =</span> <span class="st">"none"</span>) <span class="sc">+</span></span>
+<span id="cb43-17"><a href="#cb43-17" aria-hidden="true" tabindex="-1"></a>  <span class="fu">facet_wrap</span>(<span class="sc">~</span> GCLUSTER4)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="Take-home_EX02_files/figure-html/unnamed-chunk-35-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<p>We can attempt to characterise the clusters:</p>
+<ul>
+<li><p>Green cluster 1 (mostly rural, low capacity, average condition): mid prop functional and non-functional, low-mid prop capacity, mid-high prop rural</p></li>
+<li><p>Yellow cluster 2 (mix rural and urban, poor condition, south): low-mid prop functional and non-functional, low-mid prop low capacity, low-mid prop rural, south</p></li>
+<li><p>Purple cluster 3 (mix rural and urban, low supply, low capacity, poor condition): Low absolute functional and non-functional, mid prop functional and non-functional, low-mid prop rural</p></li>
+<li><p>Red cluster 4 (mostly rural, high supply, low capacity, good condition, north): Mid-high absolute functional, high prop functional, low prop non-functional, high prop low capacity, high prop rural, north</p></li>
+</ul>
+<p>From the above cluster characterisations, we can deduce that cluster 2 and 3 (yellow and purple) are of higher concern because the waterpoints are mostly low capacity and many are non-functional. These areas should be prioritised for maintenance. In addition, cluster 3 (purple) has a low absolute supply of waterpoints so efforts to increase waterpoint supply may be beneficial.</p>
+<p>Cluster 1 (green) is mid-priority because the proportion of non-functional waterpoints is not as high.</p>
+<p>Cluster 4 areas are the lowest priority as they generally have more waterpoints and high proportion that are in working condition.</p>
+<p>Interestingly, the cluster results when considering the geospatial dimension are actually easier to intepret although there is still a lot of overlap between clusters 1-3. There is clearer distinction of a cluster which should be considered high priority or low priority for maintenance.</p>
+<p>We should also check whether any clusters are significantly larger than others.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb44"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb44-1"><a href="#cb44-1" aria-hidden="true" tabindex="-1"></a><span class="fu">table</span>(adm_wp_cluster<span class="sc">$</span>GCLUSTER4)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>
+  1   2   3   4 
+128 283  86 264 </code></pre>
+</div>
+</div>
+<p>Not all the clusters are distinct. From the parallel coordinates plot, there still appears to be quite a lot of overlap between the distribution of attributes between clusters (mostly clusters 1-3). Increasing the number of clusters could produce a better result. We can try the next best number of clusters (k=7).</p>
+</section>
+<section id="refining-clusters-k7" class="level3">
+<h3 class="anchored" data-anchor-id="refining-clusters-k7">Refining Clusters (k=7)</h3>
+<p>Let’s try the next best number of clusters (k=7) according to the gap statistic graph in section 4.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb46"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb46-1"><a href="#cb46-1" aria-hidden="true" tabindex="-1"></a><span class="fu">choicealpha</span>(proxmat, </span>
+<span id="cb46-2"><a href="#cb46-2" aria-hidden="true" tabindex="-1"></a>            distmat, </span>
+<span id="cb46-3"><a href="#cb46-3" aria-hidden="true" tabindex="-1"></a>            <span class="at">range.alpha =</span> <span class="fu">seq</span>(<span class="dv">0</span>, <span class="dv">1</span>, <span class="fl">0.1</span>), </span>
+<span id="cb46-4"><a href="#cb46-4" aria-hidden="true" tabindex="-1"></a>            <span class="at">K=</span><span class="dv">7</span>, </span>
+<span id="cb46-5"><a href="#cb46-5" aria-hidden="true" tabindex="-1"></a>            <span class="at">graph =</span> <span class="cn">TRUE</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="Take-home_EX02_files/figure-html/unnamed-chunk-37-1.png" class="img-fluid" width="672"></p>
+</div>
+<div class="cell-output-display">
+<p><img src="Take-home_EX02_files/figure-html/unnamed-chunk-37-2.png" class="img-fluid" width="672"></p>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>$Q
+                  Q0          Q1
+alpha=0   0.63093662 0.004447545
+alpha=0.1 0.62033286 0.013241083
+alpha=0.2 0.59062097 0.217145030
+alpha=0.3 0.57981802 0.351221231
+alpha=0.4 0.47126680 0.534967151
+alpha=0.5 0.33963418 0.692726843
+alpha=0.6 0.30790259 0.731005906
+alpha=0.7 0.15156730 0.819693878
+alpha=0.8 0.01149031 0.898919073
+alpha=0.9 0.01144768 0.903395165
+alpha=1   0.00312245 0.913346910
+
+$Qnorm
+               Q0norm      Q1norm
+alpha=0   1.000000000 0.004869502
+alpha=0.1 0.983193619 0.014497321
+alpha=0.2 0.936101903 0.237746499
+alpha=0.3 0.918979806 0.384543077
+alpha=0.4 0.746932080 0.585721751
+alpha=0.5 0.538301584 0.758448773
+alpha=0.6 0.488008740 0.800359533
+alpha=0.7 0.240225873 0.897461708
+alpha=0.8 0.018211512 0.984203334
+alpha=0.9 0.018143951 0.989104091
+alpha=1   0.004948912 1.000000000
+
+$range.alpha
+ [1] 0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0
+
+$K
+[1] 7
+
+attr(,"class")
+[1] "choicealpha"</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb48"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb48-1"><a href="#cb48-1" aria-hidden="true" tabindex="-1"></a>clustG <span class="ot">&lt;-</span> <span class="fu">hclustgeo</span>(proxmat, distmat, <span class="at">alpha =</span> <span class="fl">0.45</span>)</span>
+<span id="cb48-2"><a href="#cb48-2" aria-hidden="true" tabindex="-1"></a>groups <span class="ot">&lt;-</span> <span class="fu">as.factor</span>(<span class="fu">cutree</span>(clustG, <span class="at">k=</span><span class="dv">7</span>))</span>
+<span id="cb48-3"><a href="#cb48-3" aria-hidden="true" tabindex="-1"></a>adm_wp_cluster <span class="ot">&lt;-</span><span class="fu">cbind</span>(adm_wp_cluster, <span class="fu">as.matrix</span>(groups)) <span class="sc">%&gt;%</span></span>
+<span id="cb48-4"><a href="#cb48-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">rename</span>(<span class="st">`</span><span class="at">GCLUSTER7</span><span class="st">`</span> <span class="ot">=</span> <span class="st">`</span><span class="at">as.matrix.groups.</span><span class="st">`</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb49"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb49-1"><a href="#cb49-1" aria-hidden="true" tabindex="-1"></a>gclust7.map <span class="ot">&lt;-</span> <span class="fu">qtm</span>(adm_wp_cluster, <span class="st">"GCLUSTER7"</span>)</span>
+<span id="cb49-2"><a href="#cb49-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb49-3"><a href="#cb49-3" aria-hidden="true" tabindex="-1"></a><span class="fu">tmap_arrange</span>(gclust4.map, gclust7.map, <span class="at">asp=</span><span class="dv">1</span>, <span class="at">ncol=</span><span class="dv">2</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="Take-home_EX02_files/figure-html/unnamed-chunk-39-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb50"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb50-1"><a href="#cb50-1" aria-hidden="true" tabindex="-1"></a><span class="fu">table</span>(adm_wp_cluster<span class="sc">$</span>GCLUSTER7)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>
+  1   2   3   4   5   6   7 
+ 98 194  86  89 176  88  30 </code></pre>
+</div>
+</div>
+<p>Increasing the number of clusters to 7 has split up clusters 1 (green) and 4 (red) in the left map.</p>
+<p>The large low-priority red cluster in the north (left map) split into clusters 4-6 (right map). Green cluster 1 in the left map split into clusters 1 and 7 in the right map, with the new cluster 1 in the south and the new cluster 7 in the north. To determine if this splitting improved the recommendations with respect to the research question, we need to plot the distribution of attributes:</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb52"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb52-1"><a href="#cb52-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggparcoord</span>(<span class="at">data=</span> adm_wp_cluster,</span>
+<span id="cb52-2"><a href="#cb52-2" aria-hidden="true" tabindex="-1"></a>           <span class="at">columns=</span><span class="fu">c</span>(<span class="dv">6</span><span class="sc">:</span><span class="dv">9</span>, <span class="dv">11</span><span class="sc">:</span><span class="dv">12</span>),</span>
+<span id="cb52-3"><a href="#cb52-3" aria-hidden="true" tabindex="-1"></a>           <span class="at">mapping =</span> <span class="fu">aes</span>(<span class="at">color =</span> <span class="fu">as.factor</span>(<span class="st">`</span><span class="at">GCLUSTER7</span><span class="st">`</span>)),</span>
+<span id="cb52-4"><a href="#cb52-4" aria-hidden="true" tabindex="-1"></a>           <span class="at">alphaLines =</span> <span class="fl">0.3</span>,</span>
+<span id="cb52-5"><a href="#cb52-5" aria-hidden="true" tabindex="-1"></a>           <span class="at">scale=</span><span class="st">"uniminmax"</span>,</span>
+<span id="cb52-6"><a href="#cb52-6" aria-hidden="true" tabindex="-1"></a>           <span class="at">boxplot=</span><span class="cn">TRUE</span>) <span class="sc">+</span></span>
+<span id="cb52-7"><a href="#cb52-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">title =</span> <span class="st">"Parallel Coordinates Plots of Waterpoint Availability by Spatial Clusters (k=7)"</span>,</span>
+<span id="cb52-8"><a href="#cb52-8" aria-hidden="true" tabindex="-1"></a>       <span class="at">subtitle =</span> <span class="st">"Standardised using Min-Max Normalisation"</span>,</span>
+<span id="cb52-9"><a href="#cb52-9" aria-hidden="true" tabindex="-1"></a>       <span class="at">xlab =</span> <span class="st">"Cluster Variables"</span>) <span class="sc">+</span></span>
+<span id="cb52-10"><a href="#cb52-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_colour_brewer</span>(<span class="at">name=</span><span class="st">"Cluster"</span>,</span>
+<span id="cb52-11"><a href="#cb52-11" aria-hidden="true" tabindex="-1"></a>                      <span class="at">labels =</span> <span class="fu">levels</span>(adm_wp_cluster<span class="sc">$</span><span class="st">`</span><span class="at">GCLUSTER7</span><span class="st">`</span>),</span>
+<span id="cb52-12"><a href="#cb52-12" aria-hidden="true" tabindex="-1"></a>                      <span class="at">palette =</span> <span class="st">"Set3"</span>) <span class="sc">+</span></span>
+<span id="cb52-13"><a href="#cb52-13" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme</span>(<span class="at">axis.text.x =</span> <span class="fu">element_text</span>(<span class="at">angle =</span> <span class="dv">45</span>, <span class="at">size=</span><span class="dv">8</span>),</span>
+<span id="cb52-14"><a href="#cb52-14" aria-hidden="true" tabindex="-1"></a>        <span class="at">axis.title.x =</span> <span class="fu">element_blank</span>(),</span>
+<span id="cb52-15"><a href="#cb52-15" aria-hidden="true" tabindex="-1"></a>        <span class="at">axis.title.y =</span> <span class="fu">element_blank</span>(),</span>
+<span id="cb52-16"><a href="#cb52-16" aria-hidden="true" tabindex="-1"></a>        <span class="at">legend.position =</span> <span class="st">"none"</span>) <span class="sc">+</span></span>
+<span id="cb52-17"><a href="#cb52-17" aria-hidden="true" tabindex="-1"></a>  <span class="fu">facet_wrap</span>(<span class="sc">~</span> GCLUSTER7)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="Take-home_EX02_files/figure-html/unnamed-chunk-41-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<p>Since clusters 2-3 are still the same, we need not characterise them again. From the coordinates plot, we can see that the new clusters 4-6 still generally have high propotion of functional waterpoints and are hence lower priority for maintenance. The new cluster 7 has similar characteristics with clusters 4-6 (high proportion of functional, high proportion of low capacity and high proportion rural). Clusters 4-7 can collectively be assigned low priority.</p>
+<p>With the regions in better condition split off from cluster 1, cluster 1 now has lower proportions of functional waterpoints and lower proportions of low capacity. Nonetheless, it is still a mid priority cluster.</p>
+<p>There is no significant change in the recommendation for prioritisation of provision of waterpoints or maintenance so we can retain the clustering result of k=4.</p>
+</section>
+</section>
+<section id="conclusion" class="level2">
+<h2 class="anchored" data-anchor-id="conclusion">6. Conclusion</h2>
+<p>Through this exercise, I identified a cluster of regions that should be prioritised for increasing supply and improving maintenance by considering both attributes and geospatial location. The spatially constrained clustering produced a better result than aspatial clustering.</p>
+<p>Spatially constrained clustering can also reveal underlying properties about the land. Regions in the north of Nigeria tend to have more small capacity waterpoints but have a higher proportion of functional waterpoints. This could be due to climate factors where the North is more arid and there could be higher reliance on waterpoints.</p>
+<p>The recommendations on prioritisation of maintenance or increasing provision of waterpoints are based only on the data in the given dataset. Information on water demand (eg. population, population density) and other supplies of water (e.g.&nbsp;rainfall, water bodies) should also be considered to a more holistic understanding of how to meet water needs in Nigeria.</p>
+
+
 </section>
 </section>
 

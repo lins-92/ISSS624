@@ -1,0 +1,470 @@
+---
+title: "Hands-on Exercise 04"
+editor: visual
+---
+
+## Geographically Weighted Regression
+
+**Geographically weighted regression (GWR)** is a spatial statistical technique that takes non-stationary variables into consideration (e.g., climate; demographic factors; physical environment characteristics) and models the local relationships between these independent variables and an outcome of interest (aka dependent variable).
+
+This exercise will create a hedonic pricing model to explain the effect of locational factors on condominium prices in Singapore in 2015. A number of independent variables on about the property (e.g. size, type of property) and its surroundings (e.g. proximity to amenities) will be used.
+
+## 1. Setting Up
+
+### Loading Packages
+
+-   **sf** and **spdep**: spatial data handling and spatial weights
+
+-   **tidyverse**: manipulation of attribute data and plotting visualisations (aspatial)
+
+-   **tmap**: creating map visualisations
+
+-   **corrplot** and **ggpubr**: multivariate data analysis and visualisation
+
+-   **oslrr**: building OLS and performing diagnostics tests
+
+-   **GWmodel**: calibrating geographical weighted family of models
+
+-   **gtsummary**: create publication-ready analytical and summary tables
+
+```{r}
+#| output: false
+#| message: false
+
+pacman::p_load(olsrr, corrplot, ggpubr, sf, spdep, 
+               GWmodel, tmap, tidyverse, gtsummary, kableExtra)
+
+```
+
+### Loading Data
+
+The geospatial dataset that will be used is the Singapore Masterplan 2014 subzone planning boundaries.
+
+```{r}
+mpsz <- st_read(dsn="data/geospatial",
+                layer="MP14_SUBZONE_WEB_PL")
+```
+
+When importing geospatial files, we should check the projection:
+
+```{r}
+st_crs(mpsz)
+```
+
+Although the projection is correct, the EPSG code is incorrect. st_set_crs edits crs information but does not reproject the dataset.
+
+```{r}
+mpsz_svy21 <-st_transform(mpsz, 3414)
+st_crs(mpsz_svy21)
+```
+
+We can view the geographical extent of the dataset:
+
+```{r}
+st_bbox(mpsz_svy21)
+```
+
+Now let's load the aspatial dataset:
+
+```{r}
+#| message: false
+
+condo_resale = read_csv("data/aspatial/Condo_resale_2015.csv")
+```
+
+```{r}
+glimpse(condo_resale)
+```
+
+The condo dataset contains transactions by condominium blocks. It can be transformed into a geospatial dataset using the latitude and longitude data:
+
+```{r}
+condo_resale.sf <- st_as_sf(condo_resale,
+                            coords=c("LONGITUDE", "LATITUDE"),
+                            crs=4326) %>%
+  st_transform(crs=3414)
+```
+
+We can plot the two geospatial datasets:
+
+```{r}
+tm_shape(mpsz_svy21) +
+  tm_polygons() +
+tm_shape(condo_resale.sf) +
+  tm_dots()
+```
+
+## 2. Exploratory Data Analysis
+
+Before building a model, we should examine the distribution of the variables in the data. The code below plots histograms for the numeric variables in the dataset.
+
+```{r}
+#| fig-width: 14
+#| fig-height: 12
+
+autoplot <- function(x){
+  ggplot(data=condo_resale.sf, aes(x= get(x))) + 
+    geom_histogram(bins=20, color="black", fill="light blue")+
+    labs(x=x)
+}
+
+numdists <- map(names(condo_resale[4:20]), ~autoplot(.x))
+ggarrange(plotlist=numdists, ncol=3, nrow=6)
+```
+
+Linear regression does not require independent variables to be normally distributed, but we should note if there are outliers. The dependent variables should also be linearly correlated with the indepdent variable.
+
+We should also check for multicollienarity:
+
+```{r}
+corrplot(cor(condo_resale[, 5:23]), diag = FALSE, order = "AOE",
+         tl.pos = "td", tl.cex = 0.5, method = "number", type = "upper")
+```
+
+LEASEHOLD_99YEAR has a strong negative correlation with FREEHOLD, so one of them should be excluded in the model. I will exclude LEASEHOLD_99YEAR in the subsequent model building.
+
+By setting tmap_mode to view, we get an interactive map. We can also use plot the values of a variable spatially by varying the colour of each point. tm_dots() is used so that the size scales with the zoom.
+
+```{r}
+tmap_mode("view")
+tmap_options(check.and.fix = TRUE)
+
+tm_shape(mpsz_svy21)+
+  tm_polygons() +
+tm_shape(condo_resale.sf) +  
+  tm_dots(col = "SELLING_PRICE",
+          alpha = 0.6,
+          style="quantile") +
+  tm_view(set.zoom.limits = c(11,14))
+```
+
+Set the plot mode back to plot.
+
+```{r}
+tmap_mode("plot")
+```
+
+## 3. Regression Models
+
+### Simple Linear Regression
+
+The following code creates a simple linear regression (only one explanatory variable). It models the relationship between selling price and size.
+
+```{r}
+condo.slr <- lm(formula=SELLING_PRICE ~ AREA_SQM, data = condo_resale.sf)
+
+summary(condo.slr)
+```
+
+The adjusted R-squared value of 0.4515 means that the model can explain about 45% of the variation of the selling price. The p-value of the model is also low (\<0.001) so we can reject the null hypothesis that mean selling price is a good estimator of selling price and accept the alternative hypothesis that the model is a better estimator of selling price.
+
+Since we are only using 2 variables, we can easily plot the relationship:
+
+```{r}
+ggplot(data=condo_resale.sf,  
+       aes(x=`AREA_SQM`, y=`SELLING_PRICE`)) +
+  geom_point() +
+  geom_smooth(method = lm) +
+  theme_bw()
+```
+
+While the results of the simple linear regression show that size can be used to estimate selling price, we may be able to estimate selling price better by including more explanatory variables.
+
+### Multiple Linear Regression
+
+The following code chunk uses all the available independent variables:
+
+```{r}
+condo.mlr <- lm(formula = SELLING_PRICE ~ AREA_SQM + AGE    + 
+                  PROX_CBD + PROX_CHILDCARE + PROX_ELDERLYCARE +
+                  PROX_URA_GROWTH_AREA + PROX_HAWKER_MARKET + PROX_KINDERGARTEN + 
+                  PROX_MRT  + PROX_PARK + PROX_PRIMARY_SCH + 
+                  PROX_TOP_PRIMARY_SCH + PROX_SHOPPING_MALL + PROX_SUPERMARKET + 
+                  PROX_BUS_STOP + NO_Of_UNITS + FAMILY_FRIENDLY + FREEHOLD, 
+                data=condo_resale.sf)
+summary(condo.mlr)
+```
+
+The tbl_regression() function can create publication-ready summary tables for regression models. The following code chunk produces a clean coefficient table and the summary statistics of the model.
+
+```{r}
+tbl_regression(condo.mlr, 
+               intercept = TRUE) %>% 
+  add_glance_source_note(
+    label = list(sigma ~ "\U03C3"),
+    include = c(r.squared, adj.r.squared, 
+                AIC, statistic,
+                p.value, sigma))
+```
+
+The adjusted R-squared value of 0.647 means that the model can explain about 65% of the variation in selling price. This indicates that overall, this multiple linear regression model is a better estimator of the selling price than the simple linear regression model in the previous section.
+
+However, we can also see that not all the variables used were statistically significant (let's set alpha at 0.05), meaning that we cannot reject the null hypothesis that the coefficient for that variable is 0. Removal of these variables may improve fit.
+
+```{r}
+condo.mlr1 <- lm(formula = SELLING_PRICE ~ AREA_SQM + AGE + PROX_CBD +
+                   PROX_CHILDCARE + PROX_ELDERLYCARE +PROX_URA_GROWTH_AREA +
+                   PROX_MRT  + PROX_PARK + PROX_PRIMARY_SCH +
+                   PROX_SHOPPING_MALL + PROX_BUS_STOP + NO_Of_UNITS +
+                   FAMILY_FRIENDLY + FREEHOLD, 
+                 data=condo_resale.sf)
+
+tbl_regression(condo.mlr1, 
+               intercept = TRUE) %>% 
+  add_glance_source_note(
+    label = list(sigma ~ "\U03C3"),
+    include = c(r.squared, adj.r.squared, 
+                AIC, statistic,
+                p.value, sigma))
+```
+
+### Check Regression Assumptions
+
+There are a few main assumptions or requirements in linear regression:
+
+-   No multicollinearity between explanatory variables
+
+-   Linear relationship between independent and dependent variables
+
+-   Independence of errors
+
+-   Normality of errors
+
+-   Equal variance of errors
+
+The **linearity assumption** and **independence of errors** can be checked using the following code chunk. The points are approximately randomly scattered around the 0 line, indicating a linear relationship
+
+```{r}
+ols_plot_resid_fit(condo.mlr1)
+```
+
+VIFs (variance inflation factor) can be used to check for **multicollinearity**. A VIF value \>10 usually indicates that there is multicollinearity.
+
+```{r}
+ols_vif_tol(condo.mlr1)
+```
+
+The following code chunk tests for **unequal variance of errors** (aka heteroskedasticity). With a low p-value, we reject the null hypothesis and conclude that the variance of errors is not constant.
+
+```{r}
+ols_test_breusch_pagan(condo.mlr1)
+```
+
+**Normality of errors** can be tested by plotting the distribution of errors or using a statistical test. The low p-values mean that we reject the null hypothesis that the data (residuals) follow a normal distribution. In other words, the assumption for normality of residuals does not hold.
+
+```{r}
+ols_plot_resid_hist(condo.mlr1)
+```
+
+```{r}
+ols_test_normality(condo.mlr1)
+```
+
+## 4. Spatial Autocorrelation
+
+Geographically weighted regression estimates a dependent variable that varies across space. First we must test if the dependent variable does indeed exhibit systematic spatial variation, which is also know as spatial autocorrelation.
+
+First, we need to convert the residuals from the multiple linear regression model from sf data frame into a spatial points data frame. The following code chunk extracts the residuals and appends it to the geosptial dataset.
+
+```{r}
+mlr.output <- as.data.frame(condo.mlr1$residuals)
+
+condo_resale.res.sf <- cbind(condo_resale.sf, 
+                             condo.mlr1$residuals) %>%
+  rename(`MLR_RES` = `condo.mlr1.residuals`)
+```
+
+This code chunk converts it to a spatial points data frame object which is required by the GWmodel functions as input.
+
+```{r}
+condo_resale.sp <- as_Spatial(condo_resale.res.sf)
+```
+
+We can view the residuals on the map to visually look for spatial autocorrelation.
+
+```{r}
+tmap_mode("view")
+
+tm_shape(mpsz_svy21)+
+  tmap_options(check.and.fix = TRUE) +
+  tm_polygons(alpha = 0.4) +
+tm_shape(condo_resale.res.sf) +  
+  tm_dots(col = "MLR_RES",
+          alpha = 0.6,
+          style="quantile") +
+  tm_view(set.zoom.limits = c(11,14))
+```
+
+There appears to be spatial autocorrelation. we can see that there are locations with clustering of observations with high residuals.
+
+```{r}
+tmap_mode("plot")
+```
+
+For a more conclusive test, we can use the Moran's I test to check if residuals are randomly distributed across space.
+
+First, we need to define the neighbourhood. Since we are using point data, we will use a distance-based weight matrix. The following code chunk creates the list of neighbours of each point up to 1.5km away.
+
+```{r}
+nb <- dnearneigh(coordinates(condo_resale.sp), 0, 1500, longlat = FALSE)
+summary(nb)
+```
+
+Then we convert it to a spatial weight matrix using `nb2listw()`. We are using a row-standardised weight matrix.
+
+```{r}
+nb_lw <- nb2listw(nb, style = 'W')
+summary(nb_lw)
+```
+
+Next, [`lm.morantest()`](https://r-spatial.github.io/spdep/reference/lm.morantest.html) of **spdep** package will be used to perform Moran\'s I test for residual spatial autocorrelation.
+
+```{r}
+lm.morantest(condo.mlr1, nb_lw)
+```
+
+The p-value of the Moran's I test is less than the alpha value of 0.05. We can reject the null hypothesis and conclude that residuals are not randomly distributed. Since the observed Moran's I statistic is 0.14 which is \>0, we can infer that there is clustering.
+
+## 5. Building the GWR Model
+
+### Fixed Bandwith
+
+The following code chunk is used to determine the optimal fixed bandwidth to use in the model. If we want to use adaptive distance (fixed number of neighbours), we would change the `adaptive=FALSE` argument to `adaptive=TRUE`. The approach argument sets the stopping rule to determine the maximum threshold distance.
+
+```{r}
+bw.fixed <- bw.gwr(formula = SELLING_PRICE ~ AREA_SQM + AGE + PROX_CBD + 
+                     PROX_CHILDCARE + PROX_ELDERLYCARE  + PROX_URA_GROWTH_AREA + 
+                     PROX_MRT + PROX_PARK + PROX_PRIMARY_SCH + 
+                     PROX_SHOPPING_MALL + PROX_BUS_STOP + NO_Of_UNITS + 
+                     FAMILY_FRIENDLY + FREEHOLD, 
+                   data=condo_resale.sp, 
+                   approach="CV", 
+                   kernel="gaussian", 
+                   adaptive=FALSE, 
+                   longlat=FALSE)
+
+```
+
+The recommended bandwidth is 971.3405m.
+
+The following code chunk performs the geographically weighted regression using the fixed bandwidth found in the previous step.
+
+```{r}
+gwr.fixed <- gwr.basic(formula = SELLING_PRICE ~ AREA_SQM + AGE + PROX_CBD + 
+                         PROX_CHILDCARE + PROX_ELDERLYCARE + PROX_URA_GROWTH_AREA +
+                         PROX_MRT   + PROX_PARK + PROX_PRIMARY_SCH + 
+                         PROX_SHOPPING_MALL + PROX_BUS_STOP + NO_Of_UNITS + 
+                         FAMILY_FRIENDLY + FREEHOLD, 
+                       data=condo_resale.sp, 
+                       bw=bw.fixed, 
+                       kernel = 'gaussian', 
+                       longlat = FALSE)
+```
+
+Let's check the output.
+
+```{r}
+gwr.fixed
+```
+
+The adjusted R-squared of the model is 0.8430417 which is higher than the R-square of the multiple linear regression model's R-square of 0.647. This means that the geographically weighted model is able to explain more of the variation in selling price than the multiple linear regression model.
+
+### Adaptive Bandwidth
+
+The following code chunk uses adaptive bandwidth instead. It recommends the number of points that should be considered as neighbours.
+
+```{r}
+bw.adaptive <- bw.gwr(formula = SELLING_PRICE ~ AREA_SQM + AGE  + 
+                        PROX_CBD + PROX_CHILDCARE + PROX_ELDERLYCARE    + 
+                        PROX_URA_GROWTH_AREA + PROX_MRT + PROX_PARK + 
+                        PROX_PRIMARY_SCH + PROX_SHOPPING_MALL   + PROX_BUS_STOP + 
+                        NO_Of_UNITS + FAMILY_FRIENDLY + FREEHOLD, 
+                      data=condo_resale.sp, 
+                      approach="CV", 
+                      kernel="gaussian", 
+                      adaptive=TRUE, 
+                      longlat=FALSE)
+```
+
+The algorithm recommends 30 as the optimal number of neighbours.
+
+Now, we can conduct the geographically weighted regression.
+
+```{r}
+gwr.adaptive <- gwr.basic(formula = SELLING_PRICE ~ AREA_SQM + AGE + 
+                            PROX_CBD + PROX_CHILDCARE + PROX_ELDERLYCARE + 
+                            PROX_URA_GROWTH_AREA + PROX_MRT + PROX_PARK + 
+                            PROX_PRIMARY_SCH + PROX_SHOPPING_MALL + PROX_BUS_STOP +
+                            NO_Of_UNITS + FAMILY_FRIENDLY + FREEHOLD, 
+                          data=condo_resale.sp, 
+                          bw=bw.adaptive, 
+                          kernel = 'gaussian', 
+                          adaptive=TRUE, 
+                          longlat = FALSE)
+```
+
+```{r}
+gwr.adaptive
+```
+
+The R-square of the GWR model using adaptive distance is 0.856 which is also better than that of the MLR model (0.647). It is also slightly better than the GWR model using fixed distance.
+
+### Visualising GWR Output
+
+On top of the printed output shown in the previous sections, the `gwr.basic()` function also outputs some other diagnostics saved as a spatial points data frame named SDF.
+
+-   Condition Number: this diagnostic evaluates local collinearity. In the presence of strong local collinearity, results become unstable. Results associated with condition numbers larger than 30, may be unreliable.
+
+-   Local R2: these values range between 0.0 and 1.0 and indicate how well the local regression model fits observed y values. Very low values indicate the local model is performing poorly. Mapping the Local R2 values to see where GWR predicts well and where it predicts poorly may provide clues about important variables that may be missing from the regression model.
+
+-   Predicted y (yhat): these are the estimated (or fitted) y values computed by GWR.
+
+-   Residuals: Residuals are the difference between observed y values and the fitted y values. Standardized residuals have a mean of zero and a standard deviation of 1. A cold-to-hot rendered map of standardized residuals can be produce by using these values.
+
+-   Coefficient Standard Error: these values measure the reliability of each coefficient estimate. Confidence in those estimates are higher when standard errors are small in relation to the actual coefficient values. Large standard errors may indicate problems with local collinearity.
+
+To visualise the results of the GWR model, we extract it and convert it to an sf object.
+
+```{r}
+condo_resale.sf.adaptive <- st_as_sf(gwr.adaptive$SDF) %>%
+  st_transform(crs=3414)
+```
+
+```{r}
+glimpse(condo_resale.sf.adaptive)
+```
+
+The following code chunk produces a summary of the predicted y values.
+
+```{r}
+summary(gwr.adaptive$SDF$yhat)
+```
+
+The following code chunk visualises local R-square
+
+```{r}
+tmap_mode("view")
+tm_shape(mpsz_svy21)+
+  tm_polygons(alpha = 0.1) +
+tm_shape(condo_resale.sf.adaptive) +  
+  tm_dots(col = "Local_R2",
+          border.col = "gray60",
+          border.lwd = 1) +
+  tm_view(set.zoom.limits = c(11,14))
+```
+
+We can see that the GWR model is better at predicting selling prices in some areas than others. Specifically, the model is not as accurate at predicting prices near the centre of Singapore. There could be a variable that is not included in the model that could explain this
+
+We can take a close look by restricting the planning areas. These values are specifically in the Bishan, Toa Payoh, Novena and Kallang. Note that there are still points outside these regions as we did not filter the results for the condo_resale.sf.adaptive dataset. It would need to be related to the subzone data to conduct the filtering.
+
+```{r}
+tmap_mode("plot")
+
+tm_shape(mpsz_svy21[mpsz_svy21$PLN_AREA_C %in% c("BS", "TP", "NV", "KL"), ])+
+  tm_polygons()+
+tm_shape(condo_resale.sf.adaptive) + 
+  tm_bubbles(col = "Local_R2",
+           size = 0.15,
+           border.col = "gray60",
+           border.lwd = 1)
+```

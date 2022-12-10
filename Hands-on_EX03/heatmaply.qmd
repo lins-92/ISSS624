@@ -31,7 +31,7 @@ There are the packages that will be used:
 pacman::p_load(rgdal, spdep, tmap, sf, 
                ggpubr, ClustGeo, cluster, factoextra, NbClust,
                heatmaply, corrplot, psych, tidyverse,
-               dendextend, GGally)
+               dendextend, GGally, grDevices)
 ```
 
 ### Import Data
@@ -359,26 +359,99 @@ plot(num_k)
 
 Although all 3 methods have recommended different optimal number of clusters, let's just use k=6 from the gap statistic method.
 
-The follow code chunk creates borders around the clusters so we can see which townships are clustered together.
+The follow code chunks create dendrograms using different methods. The clusters change slightly each time.
 
 ```{r}
+hclust_ward <- hclust(proxmat, method = 'ward.D')
+hclust_avg <- hclust(proxmat, method = 'average')
+hclust_complete <- hclust(proxmat, method = 'complete')
+hclust_single <- hclust(proxmat, method = 'single')
+hclust_median <- hclust(proxmat, method = 'median')
+```
+
+```{r}
+#| output: false
+
+png("images/hclust_ward.png",
+    res=100)
 plot(hclust_ward, cex = 0.6)
 rect.hclust(hclust_ward, 
             k = 6, 
             border = 2:5)
+dev.off()
 ```
 
-The heatmaply package can be used to build an interactive cluster heatmap to study the distribution of cluster variables at the same time. As the `heatmaply()` function takes a numeric matrix as input, we must convert the shan_ict object first.
+```{r}
+#| output: false
+
+png("images/hclust_avg.png",
+    res=100)
+plot(hclust_avg, cex = 0.6)
+rect.hclust(hclust_avg, 
+            k = 6, 
+            border = 2:5)
+dev.off()
+```
+
+```{r}
+#| output: false
+
+png("images/hclust_complete.png",
+    res=100)
+plot(hclust_complete, cex = 0.6)
+rect.hclust(hclust_complete, 
+            k = 6, 
+            border = 2:5)
+dev.off()
+```
+
+```{r}
+#| output: false
+
+png("images/hclust_single.png",
+    res=100)
+plot(hclust_single, cex = 0.6)
+rect.hclust(hclust_single, 
+            k = 6, 
+            border = 2:5)
+dev.off()
+```
+
+```{r}
+#| output: false
+
+png("images/hclust_median.png",
+    res=100)
+plot(hclust_median, cex = 0.6)
+rect.hclust(hclust_median, 
+            k = 6, 
+            border = 2:5)
+dev.off()
+```
+
+::: {layout-ncol="2"}
+![Ward](images/hclust_ward.png)
+
+![Average](images/hclust_avg.png)
+
+![Complete](images/hclust_complete.png)
+
+![Single](images/hclust_single.png)
+
+![Median](images/hclust_median.png)
+:::
+
+Now we plot the heatmaps with dendrograms in heatmaply. As the `heatmaply()` function takes a numeric matrix as input, we must convert the shan_ict object first.
 
 ```{r}
 shan_ict_mat <- data.matrix(shan_ict)
 
 ```
 
-The following code chunk creates the interactive heatmap. The clustering is supposed to be
+The following code chunks create heatmap supposedly using the ward, average, complete, average and median methods in that order. As shown in the dendrograms above, the clustering is not all the same each method. However, the dendrograms produced by heatmaply are all even after changing the method argument. On closer examination, it appears to be the default "complete" method.
 
 ```{r}
-heatmaply(normalize(shan_ict_mat),
+heatmaply(shan_ict_mat,
           Colv=NA,
           dist_method = "euclidean",
           hclust_method = "ward.D",
@@ -388,32 +461,76 @@ heatmaply(normalize(shan_ict_mat),
           margins = c(NA,200,60,NA),
           fontsize_row = 4,
           fontsize_col = 5,
-          main="Geographic Segmentation of Shan State by ICT indicators",
+          main="Geographic Segmentation of Shan State by ICT indicators (Ward)",
           xlab = "ICT Indicators",
           ylab = "Townships of Shan State"
           )
 ```
 
-If we are happy with the 6 clusters formed, we can save the cluster assignments to the dataset and map them out. `cutree()` function extracts the cluster assignments
-
 ```{r}
-groups <- as.factor(cutree(hclust_ward, k=6))
-
+heatmaply(shan_ict_mat,
+          Colv=NA,
+          dist_method = "euclidean",
+          hclust_method = "average",
+          seriate = "OLO",
+          colors = Blues,
+          k_row = 6,
+          margins = c(NA,200,60,NA),
+          fontsize_row = 4,
+          fontsize_col = 5,
+          main="Geographic Segmentation of Shan State by ICT indicators (Average)",
+          xlab = "ICT Indicators",
+          ylab = "Townships of Shan State"
+          )
 ```
 
-The following code chunk combines the cluster assignments to shan_sf dataset.
-
 ```{r}
-shan_sf_cluster <- cbind(shan_sf, as.matrix(groups)) %>%
-  rename(`CLUSTER`=`as.matrix.groups.`)
+heatmaply(shan_ict_mat,
+          Colv=NA,
+          dist_method = "euclidean",
+          hclust_method = "complete",
+          seriate = "OLO",
+          colors = Blues,
+          k_row = 6,
+          margins = c(NA,200,60,NA),
+          fontsize_row = 4,
+          fontsize_col = 5,
+          main="Geographic Segmentation of Shan State by ICT indicators (Complete)",
+          xlab = "ICT Indicators",
+          ylab = "Townships of Shan State"
+          )
 ```
 
-Now we can plot it.
-
 ```{r}
-qtm(shan_sf_cluster, "CLUSTER")
+heatmaply(shan_ict_mat,
+          Colv=NA,
+          dist_method = "euclidean",
+          hclust_method = "single",
+          seriate = "OLO",
+          colors = Blues,
+          k_row = 6,
+          margins = c(NA,200,60,NA),
+          fontsize_row = 4,
+          fontsize_col = 5,
+          main="Geographic Segmentation of Shan State by ICT indicators (Single)",
+          xlab = "ICT Indicators",
+          ylab = "Townships of Shan State"
+          )
 ```
 
-The clusters are fragmented spatially. This is one of the motivations for spatially constrained clustering.
-
-## 
+```{r}
+heatmaply(shan_ict_mat,
+          Colv=NA,
+          dist_method = "euclidean",
+          hclust_method = "median",
+          seriate = "OLO",
+          colors = Blues,
+          k_row = 6,
+          margins = c(NA,200,60,NA),
+          fontsize_row = 4,
+          fontsize_col = 5,
+          main="Geographic Segmentation of Shan State by ICT indicators (Median)",
+          xlab = "ICT Indicators",
+          ylab = "Townships of Shan State"
+          )
+```

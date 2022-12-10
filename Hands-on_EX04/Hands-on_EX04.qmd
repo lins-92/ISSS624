@@ -317,7 +317,7 @@ nb_lw <- nb2listw(nb, style = 'W')
 summary(nb_lw)
 ```
 
-Next, [`lm.morantest()`](https://r-spatial.github.io/spdep/reference/lm.morantest.html) of **spdep** package will be used to perform Moran\'s I test for residual spatial autocorrelation.
+Next, [`lm.morantest()`](https://r-spatial.github.io/spdep/reference/lm.morantest.html) of **spdep** package will be used to perform Moran's I test for residual spatial autocorrelation.
 
 ```{r}
 lm.morantest(condo.mlr1, nb_lw)
@@ -453,7 +453,7 @@ tm_shape(condo_resale.sf.adaptive) +
   tm_view(set.zoom.limits = c(11,14))
 ```
 
-We can see that the GWR model is better at predicting selling prices in some areas than others. Specifically, the model is not as accurate at predicting prices near the centre of Singapore. There could be a variable that is not included in the model that could explain this
+We can see that the GWR model is better at predicting selling prices in some areas than others. Specifically, the model is not as accurate at predicting prices near the centre of Singapore. There could be a variable that is not included in the model that could explain this, or that we should build a different model for the region.
 
 We can take a close look by restricting the planning areas. These values are specifically in the Bishan, Toa Payoh, Novena and Kallang. Note that there are still points outside these regions as we did not filter the results for the condo_resale.sf.adaptive dataset. It would need to be related to the subzone data to conduct the filtering.
 

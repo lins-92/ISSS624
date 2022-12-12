@@ -160,6 +160,10 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
     <a class="dropdown-item" href="../Hands-on_EX03/Hands-on_EX03.html">
  <span class="dropdown-text">Hands-on Exercise 3</span></a>
   </li>  
+        <li>
+    <a class="dropdown-item" href="../Hands-on_EX04/Hands-on_EX04.html">
+ <span class="dropdown-text">Hands-on Exercise 4</span></a>
+  </li>  
     </ul>
   </li>
   <li class="nav-item dropdown ">
@@ -173,6 +177,10 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
     <a class="dropdown-item" href="../In-class_EX02/In-class_EX02.html">
  <span class="dropdown-text">In-Class Exercise 2</span></a>
   </li>  
+        <li>
+    <a class="dropdown-item" href="../In-class_EX04/In-class_EX04.html">
+ <span class="dropdown-text">In-Class Exercise 4</span></a>
+  </li>  
     </ul>
   </li>
   <li class="nav-item dropdown ">
@@ -183,7 +191,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
  <span class="dropdown-text">Take-home Exercise 1</span></a>
   </li>  
         <li>
-    <a class="dropdown-item" href="../Take-home_EX01/Take-home_EX02.qmd">
+    <a class="dropdown-item" href="../Take-home_EX02/Take-home_EX02.html">
  <span class="dropdown-text">Take-home Exercise 2</span></a>
   </li>  
     </ul>
@@ -223,6 +231,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
   <li><a href="#choosing-clustering-algorithm-and-number-of-clusters" id="toc-choosing-clustering-algorithm-and-number-of-clusters" class="nav-link" data-scroll-target="#choosing-clustering-algorithm-and-number-of-clusters">4. Choosing Clustering Algorithm and Number of Clusters</a></li>
   <li><a href="#spatially-constrained-clustering" id="toc-spatially-constrained-clustering" class="nav-link" data-scroll-target="#spatially-constrained-clustering">5. Spatially Constrained Clustering</a>
   <ul class="collapse">
+  <li><a href="#clustgeo-or-skater-method" id="toc-clustgeo-or-skater-method" class="nav-link" data-scroll-target="#clustgeo-or-skater-method">ClustGeo or SKATER Method</a></li>
   <li><a href="#defining-the-neighbourhood" id="toc-defining-the-neighbourhood" class="nav-link" data-scroll-target="#defining-the-neighbourhood">Defining the Neighbourhood</a></li>
   <li><a href="#initial-clustering" id="toc-initial-clustering" class="nav-link" data-scroll-target="#initial-clustering">Initial Clustering</a></li>
   <li><a href="#refining-clusters-k7" id="toc-refining-clusters-k7" class="nav-link" data-scroll-target="#refining-clusters-k7">Refining Clusters (k=7)</a></li>
@@ -254,7 +263,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <section id="regionalisation-using-water-point-availability-in-nigeria" class="level1">
 <h1>Regionalisation Using Water Point Availability in Nigeria</h1>
 <p>In the last take-home exercise (<a href="https://lins-92-isss624.netlify.app/take-home_ex01/take-home_ex01">link</a>), I analysed the spatial distribution of proportion of non-functional waterpoints in Nigeria. I found that there is uneven distribution in the proportion of functional and non-functional waterpoints in each administrative area, which has implications of availability of water supply and maintenance.</p>
-<p>In this exercise, I will segment Nigeria into different regions based on the availability of waterpoints, type of waterpoints and usage capacity to identify regions to give recommendations to improve water supply or maintenance.</p>
+<p>In this exercise, I will segment Nigeria into different regions based on the availability of waterpoints, type of waterpoints and usage capacity to identify groups of adminsitrative areas to give recommendations to improve water supply or maintenance.</p>
 <p>The following variables will be used (from <a href="https://isss624-ay2022-23nov.netlify.app/take-home_ex02">exercise write-up</a>):</p>
 <ul>
 <li><p>Total number of functional water points</p></li>
@@ -271,17 +280,19 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <h3 class="anchored" data-anchor-id="loading-packages">Loading Packages</h3>
 <p>We will use the following packages:</p>
 <ul>
-<li><p><code>sf</code>: import geospatial datasets</p></li>
-<li><p><code>tidyverse</code>: manipulate aspatial data</p></li>
-<li><p><code>spdep</code>: compute spatial weights and autocorrelation</p></li>
-<li><p><code>tmap</code>: plot maps</p></li>
-<li><p><code>funModeling</code>: quick exploratory data analysis</p></li>
+<li><p><strong>sf</strong>, <strong>rgdal</strong> and <strong>spdep</strong>: spatial data handling and spatial weights</p></li>
+<li><p><strong>tidyverse</strong>: manipulation of attribute data and plotting visualisations (aspatial)</p></li>
+<li><p><strong>tmap</strong>: creating map visualisations</p></li>
+<li><p><strong>corrplot</strong>, <strong>ggpubr</strong> and <strong>GGally</strong>: multivariate data analysis and visualisation</p></li>
+<li><p><strong>cluster</strong>, <strong>factoextra</strong>, <strong>nbclust</strong> and <strong>clustGeo</strong>: cluster analysis</p></li>
+<li><p><strong>funModeling</strong>: quick exploratory data analysis</p></li>
+<li><p><strong>kableExtra</strong>: generate nicely formatted tables</p></li>
 </ul>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>pacman<span class="sc">::</span><span class="fu">p_load</span>(rgdal, spdep, tmap, sf, kableExtra,</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>               ggpubr, cluster, ClustGeo, factoextra, NbClust,</span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>               heatmaply, corrplot, tidyverse,</span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>               dendextend, GGally, funModeling, RColorBrewer)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>               GGally, funModeling)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 </section>
 <section id="loading-data" class="level3">
@@ -311,7 +322,7 @@ $ usage_capacity      &lt;dbl&gt; 250, 1000, 300, 300, 300, 300, 300, 1000, 300,
 $ is_urban            &lt;lgl&gt; TRUE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, TR…</code></pre>
 </div>
 </div>
-<p>The following code chunk cleans variables names that contain the special character “#” and recategorises the well status into 3 broad categories (functional, non-functional and unknown).</p>
+<p>The following code chunk cleans variables names that contain the special character “#” and recategorises the well status into 3 broad categories (functional, non-functional and unknown). I turn them into binary dummy variables so that it is easier to generate counts and proportions in the later steps.</p>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb5"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>wp <span class="ot">&lt;-</span> <span class="fu">read_rds</span>(<span class="st">"data/WPdx_plus_Nigeria.rds"</span>) <span class="sc">%&gt;%</span></span>
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">rename_with</span>(<span class="sc">~</span><span class="fu">str_replace</span>(.x, <span class="st">"#"</span>, <span class="st">""</span>)) <span class="sc">%&gt;%</span></span>
@@ -344,6 +355,7 @@ $ is_urban            &lt;lgl&gt; TRUE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE
 2     TRUE     19564      20.59          100.00</code></pre>
 </div>
 </div>
+<p>Majority of waterpoints are located in rural areas.</p>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="fu">freq</span>(wp, <span class="at">input=</span><span class="st">"water_tech_clean"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output-display">
@@ -381,7 +393,7 @@ $ is_urban            &lt;lgl&gt; TRUE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE
 <pre><code>[1] 0</code></pre>
 </div>
 </div>
-<p>We need to recategorise water tech and usage capacity as well. The following code chunk creates new dummy variable for handpumps vs others and waterpumpts of low capacity (&lt;1000) vs high capacity (&gt;=1000). We only need one dummy variable each because there are only 2 categories each so the proportions would be collinear.</p>
+<p>We need to recategorise water tech and usage capacity as well. The following code chunk creates new dummy variable for handpumps vs others and waterpoints of low capacity (&lt;1000) vs high capacity (&gt;=1000). We only need one dummy variable each because there are only 2 categories each so the proportions would be collinear.</p>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb13"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>wp_clean <span class="ot">&lt;-</span> wp <span class="sc">%&gt;%</span></span>
 <span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">handpump =</span> <span class="fu">case_when</span>(</span>
@@ -430,21 +442,21 @@ Geodetic CRS:  WGS 84</code></pre>
 </section>
 <section id="data-preparation" class="level2">
 <h2 class="anchored" data-anchor-id="data-preparation">2. Data Preparation</h2>
-<p>The next step is to associate the location (ie. administrative area) to each waterpoint. I will use st_join() to perform a spatial join to relate polygon IDs to each waterpoint in the wp_st dataset by its location (note that the shapeName variable contains duplicates and should not be used for this step). The <code>join=st_intersects()</code> argument tells R the type of spatial join to use. Note that both datasets must have the same projection (WGS1984), which is why we have not transformed either dataset yet.</p>
+<p>The next step is to associate the location (ie. administrative area) to each waterpoint. I will use <code>st_join()</code> to perform a spatial join to relate polygon IDs to each waterpoint in the wp_st dataset by its location (note that the shapeName variable contains duplicates and should not be used for this step). The <code>join=st_intersects()</code> argument tells R the type of spatial join to use. Note that both datasets must have the same projection (WGS1984), which is why we have not transformed either dataset yet.</p>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb18"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>wp_sf <span class="ot">&lt;-</span> <span class="fu">st_join</span>(<span class="at">x =</span> wp_sf,</span>
 <span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>                 <span class="at">y =</span> adm_bound,</span>
 <span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>                 <span class="at">join =</span> st_intersects,</span>
 <span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>                 <span class="at">left =</span> <span class="cn">TRUE</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<p>As found in <a href="https://lins-92-isss624.netlify.app/take-home_ex01/take-home_ex01#status-of-waterpoints">take-home exercise 1</a>, there should be 29 missing values in polygon IDs where the waterpoings actually fall outside of the boundary of Nigeria.</p>
+<p>As found in <a href="https://lins-92-isss624.netlify.app/take-home_ex01/take-home_ex01#status-of-waterpoints">take-home exercise 1</a>, there should be 29 missing values in polygon IDs where the waterpoints actually fall outside of the boundary of Nigeria.</p>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb19"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sum</span>(<span class="fu">is.na</span>(wp_sf<span class="sc">$</span>shapeID))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1] 29</code></pre>
 </div>
 </div>
-<p>The next step is to collapse the dataset by administrative area to get the proportion and number of waterpoints by the relevant variables. First, we need to strip the geometry from the dataset in order to manipulate it.</p>
+<p>The next step is to collapse the dataset by administrative area to get the proportion and number of waterpoints by the relevant variables. First, we need to strip the geometry from the dataset in order to manipulate it and remove the waterpoints that are not located within Nigeria. Then, we use the <code>group_by()</code> and <code>summarise()</code> functions to count the total number of waterpoints that meet each criteria. Because the variables were in binary format, we can just sum up each column.</p>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb21"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>joinvars <span class="ot">&lt;-</span> wp_sf <span class="sc">%&gt;%</span></span>
 <span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">st_set_geometry</span>(<span class="cn">NULL</span>) <span class="sc">%&gt;%</span></span>
@@ -562,8 +574,8 @@ Geodetic CRS:  WGS 84</code></pre>
 <p><img src="Take-home_EX02_files/figure-html/unnamed-chunk-19-1.png" class="img-fluid" width="672"></p>
 </div>
 </div>
-<p>The distribution of absolute number of functional and non-functional waterpoints is right skewed. The proportion of rural waterpoints is also left skewed but not as much as handpump proportion. Nonetheless, the hierarchical clustering technique is not as sensitive to outliers so there is no need to address outliers.</p>
-<p>The following code chunk plots the cluster variables spatially by creating a function. The function is looped over the names of variables of interest using the <code>map()</code> function.</p>
+<p>The distribution of absolute number of functional and non-functional waterpoints is right skewed. The proportion of rural waterpoints is left skewed. Nonetheless, the hierarchical clustering technique is not as sensitive to outliers so there is no need to address outliers.</p>
+<p>The following code chunk plots each of the cluster variables spatially by creating a function. The function is looped over the names of variables of interest using the <code>map()</code> function.</p>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb26"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>autoplot <span class="ot">&lt;-</span> <span class="cf">function</span>(x){</span>
 <span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">tm_shape</span>(adm_wp) <span class="sc">+</span></span>
@@ -580,7 +592,7 @@ Geodetic CRS:  WGS 84</code></pre>
 </div>
 <p>There are a few observations we can draw from the maps:</p>
 <ul>
-<li>There are regions with missing data. These regions will need to be dropped.</li>
+<li>There are regions with missing data (no waterpoints). These regions will need to be dropped.</li>
 </ul>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb27"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>adm_wp <span class="ot">&lt;-</span> adm_wp <span class="sc">%&gt;%</span></span>
@@ -662,6 +674,7 @@ Geodetic CRS:  WGS 84</code></pre>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb35"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a>hclust_ward <span class="ot">&lt;-</span> <span class="fu">hclust</span>(proxmat, <span class="at">method =</span> <span class="st">'ward.D2'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
+<p>This next code chunk saves the cluster assignments at k=4 in the adm_wp spatial dataset and plots a parallel coordinates plot to examine the distribution of variables in each cluster.</p>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb36"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a>groups <span class="ot">&lt;-</span> <span class="fu">as.factor</span>(<span class="fu">cutree</span>(hclust_ward, <span class="at">k=</span><span class="dv">4</span>))</span>
 <span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a>adm_wp_cluster <span class="ot">&lt;-</span> <span class="fu">cbind</span>(adm_wp, <span class="fu">as.matrix</span>(groups)) <span class="sc">%&gt;%</span></span>
@@ -670,7 +683,7 @@ Geodetic CRS:  WGS 84</code></pre>
 <span id="cb36-5"><a href="#cb36-5" aria-hidden="true" tabindex="-1"></a><span class="fu">ggparcoord</span>(<span class="at">data=</span> adm_wp_cluster,</span>
 <span id="cb36-6"><a href="#cb36-6" aria-hidden="true" tabindex="-1"></a>           <span class="at">columns=</span><span class="fu">c</span>(<span class="dv">6</span><span class="sc">:</span><span class="dv">9</span>, <span class="dv">11</span><span class="sc">:</span><span class="dv">12</span>),</span>
 <span id="cb36-7"><a href="#cb36-7" aria-hidden="true" tabindex="-1"></a>           <span class="at">mapping =</span> <span class="fu">aes</span>(<span class="at">color =</span> <span class="fu">as.factor</span>(<span class="st">`</span><span class="at">HCLUSTER</span><span class="st">`</span>)),</span>
-<span id="cb36-8"><a href="#cb36-8" aria-hidden="true" tabindex="-1"></a>           <span class="at">alphaLines =</span> <span class="fl">0.3</span>,</span>
+<span id="cb36-8"><a href="#cb36-8" aria-hidden="true" tabindex="-1"></a>           <span class="at">alphaLines =</span> <span class="fl">0.4</span>,</span>
 <span id="cb36-9"><a href="#cb36-9" aria-hidden="true" tabindex="-1"></a>           <span class="at">scale=</span><span class="st">"uniminmax"</span>,</span>
 <span id="cb36-10"><a href="#cb36-10" aria-hidden="true" tabindex="-1"></a>           <span class="at">boxplot=</span><span class="cn">TRUE</span>) <span class="sc">+</span></span>
 <span id="cb36-11"><a href="#cb36-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">title =</span> <span class="st">"Parallel Coordinates Plots of Waterpoint Availability by Hierarchical Clusters (k=4)"</span>,</span>
@@ -688,7 +701,13 @@ Geodetic CRS:  WGS 84</code></pre>
 <p><img src="Take-home_EX02_files/figure-html/unnamed-chunk-29-1.png" class="img-fluid" width="672"></p>
 </div>
 </div>
-<p>We can attempt to characterise the 4 clusters from the parallel coordinates plots:</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb37"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a><span class="fu">qtm</span>(adm_wp_cluster, <span class="st">"HCLUSTER"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="Take-home_EX02_files/figure-html/unnamed-chunk-30-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<p>As expected, the clusters are fragmented spatially. We can attempt to characterise the 4 clusters from the parallel coordinates plots:</p>
 <ul>
 <li><p>Green cluster 1 (mix of urban and rural, average condition): Mid prop functional and non-functional, low-mid prop low capacity, low-mid prop rural</p></li>
 <li><p>Yellow cluster 2 (mostly rural, poor condition): Low-mid prop non-functional, high prop rural</p></li>
@@ -698,18 +717,15 @@ Geodetic CRS:  WGS 84</code></pre>
 <p>However, the clusters do not appear to be very distinct. Although the algorithm has recommended 4 as the optimum number of clusters, the results may not be easy to interpret because there is overlap in the distribution of the variables for each cluster.</p>
 <p>The final cluster assignment should be informed by whether it can adequately address the research question (recommending areas to improve water supply/maintenance in this case) and intepretability. While increasing the number of clusters improves the within cluster cohesion, having too many clusters also makes interpretation difficult.</p>
 <p>Nonetheless, since we are more interested in regionalisation than pure hierarchical clustering, we proceed to plot the 4 clusters spatially first. We can keep in mind that k=7 is the next best number of clusters when checking the spatial clustering results.</p>
-<div class="cell">
-<div class="sourceCode cell-code" id="cb37"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a><span class="fu">qtm</span>(adm_wp_cluster, <span class="st">"HCLUSTER"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output-display">
-<p><img src="Take-home_EX02_files/figure-html/unnamed-chunk-30-1.png" class="img-fluid" width="672"></p>
-</div>
-</div>
-<p>As expected, the clusters are fragmented spatially.</p>
 </section>
 <section id="spatially-constrained-clustering" class="level2">
 <h2 class="anchored" data-anchor-id="spatially-constrained-clustering">5. Spatially Constrained Clustering</h2>
+<section id="clustgeo-or-skater-method" class="level3">
+<h3 class="anchored" data-anchor-id="clustgeo-or-skater-method">ClustGeo or SKATER Method</h3>
 <p>For spatially constrained clustering, I will use the ClustGeo method. It mixes 2 distance matrices, one in terms of attribute space and the other in terms of geographical distance, to conduct clustering that considers both spatial structure and attribute similarity/dissimilarity.</p>
-<p>This is chosen over the SKATER method where the neighbourhood structure is rigidly defined so clusters can only contain neighbours. The ClustGeo method will allow more flexibility in the spatial structure to consider cohesion within clusters and separation between clsuters in terms of attributes.</p>
+<p>This is chosen over the SKATER method where the neighbourhood structure is rigidly defined so all administrative areas in a cluster must be spatially contiguous (as defined by the spatial weight matrix, whether contiguity or distance based). In some use cases such as defining service regions, this is necessary because of practical considerations like logistics and ease of understanding.</p>
+<p>For the use case of regionalisation to give broad recommendations to improve water supply or maintenance, there is no need for each area in a cluster to be spatially contiguous. We can expect there to be some spatial clustering because of underlying geographical factors (e.g.&nbsp;climate, development etc) but these areas need not neccessarily spatially contiguous. The ClustGeo method will allow more flexibility in the spatial structure to consider cohesion within clusters and separation between clsuters in terms of attributes.</p>
+</section>
 <section id="defining-the-neighbourhood" class="level3">
 <h3 class="anchored" data-anchor-id="defining-the-neighbourhood">Defining the Neighbourhood</h3>
 <p>In order to conduct spatially constrained clustering, we need to define the spatial structure in the form of a distance matrix for the ClustGeo method.</p>

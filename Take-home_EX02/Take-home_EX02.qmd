@@ -10,7 +10,7 @@ execute:
 
 In the last take-home exercise ([link](https://lins-92-isss624.netlify.app/take-home_ex01/take-home_ex01)), I analysed the spatial distribution of proportion of non-functional waterpoints in Nigeria. I found that there is uneven distribution in the proportion of functional and non-functional waterpoints in each administrative area, which has implications of availability of water supply and maintenance.
 
-In this exercise, I will segment Nigeria into different regions based on the availability of waterpoints, type of waterpoints and usage capacity to identify regions to give recommendations to improve water supply or maintenance.
+In this exercise, I will segment Nigeria into different regions based on the availability of waterpoints, type of waterpoints and usage capacity to identify groups of adminsitrative areas to give recommendations to improve water supply or maintenance.
 
 The following variables will be used (from [exercise write-up](https://isss624-ay2022-23nov.netlify.app/take-home_ex02)):
 
@@ -34,15 +34,19 @@ The following variables will be used (from [exercise write-up](https://isss624-a
 
 We will use the following packages:
 
--   `sf`: import geospatial datasets
+-   **sf**, **rgdal** and **spdep**: spatial data handling and spatial weights
 
--   `tidyverse`: manipulate aspatial data
+-   **tidyverse**: manipulation of attribute data and plotting visualisations (aspatial)
 
--   `spdep`: compute spatial weights and autocorrelation
+-   **tmap**: creating map visualisations
 
--   `tmap`: plot maps
+-   **corrplot**, **ggpubr** and **GGally**: multivariate data analysis and visualisation
 
--   `funModeling`: quick exploratory data analysis
+-   **cluster**, **factoextra**, **nbclust** and **clustGeo**: cluster analysis
+
+-   **funModeling**: quick exploratory data analysis
+
+-   **kableExtra**: generate nicely formatted tables
 
 ```{r}
 #| output: false
@@ -51,7 +55,7 @@ We will use the following packages:
 pacman::p_load(rgdal, spdep, tmap, sf, kableExtra,
                ggpubr, cluster, ClustGeo, factoextra, NbClust,
                heatmaply, corrplot, tidyverse,
-               dendextend, GGally, funModeling, RColorBrewer)
+               GGally, funModeling)
 ```
 
 ### Loading Data
@@ -76,7 +80,7 @@ wp <- read_rds("data/WPdx_plus_Nigeria.rds")
 glimpse(wp)
 ```
 
-The following code chunk cleans variables names that contain the special character "\#" and recategorises the well status into 3 broad categories (functional, non-functional and unknown).
+The following code chunk cleans variables names that contain the special character "\#" and recategorises the well status into 3 broad categories (functional, non-functional and unknown). I turn them into binary dummy variables so that it is easier to generate counts and proportions in the later steps.
 
 ```{r}
 wp <- read_rds("data/WPdx_plus_Nigeria.rds") %>%
@@ -108,6 +112,8 @@ Let's visualise the other variables of interest as well.
 freq(wp, input="is_urban")
 ```
 
+Majority of waterpoints are located in rural areas.
+
 ```{r}
 freq(wp, input="water_tech_clean")
 ```
@@ -125,7 +131,7 @@ ggplot(wp) +
 sum(is.na(wp$usage_capacity))
 ```
 
-We need to recategorise water tech and usage capacity as well. The following code chunk creates new dummy variable for handpumps vs others and waterpumpts of low capacity (\<1000) vs high capacity (\>=1000). We only need one dummy variable each because there are only 2 categories each so the proportions would be collinear.
+We need to recategorise water tech and usage capacity as well. The following code chunk creates new dummy variable for handpumps vs others and waterpoints of low capacity (\<1000) vs high capacity (\>=1000). We only need one dummy variable each because there are only 2 categories each so the proportions would be collinear.
 
 ```{r}
 wp_clean <- wp %>%
@@ -167,7 +173,7 @@ tm_shape(wp_sf) +
 
 ## 2. Data Preparation
 
-The next step is to associate the location (ie. administrative area) to each waterpoint. I will use st_join() to perform a spatial join to relate polygon IDs to each waterpoint in the wp_st dataset by its location (note that the shapeName variable contains duplicates and should not be used for this step). The `join=st_intersects()` argument tells R the type of spatial join to use. Note that both datasets must have the same projection (WGS1984), which is why we have not transformed either dataset yet.
+The next step is to associate the location (ie. administrative area) to each waterpoint. I will use `st_join()` to perform a spatial join to relate polygon IDs to each waterpoint in the wp_st dataset by its location (note that the shapeName variable contains duplicates and should not be used for this step). The `join=st_intersects()` argument tells R the type of spatial join to use. Note that both datasets must have the same projection (WGS1984), which is why we have not transformed either dataset yet.
 
 ```{r}
 wp_sf <- st_join(x = wp_sf,
@@ -176,13 +182,13 @@ wp_sf <- st_join(x = wp_sf,
                  left = TRUE)
 ```
 
-As found in [take-home exercise 1](https://lins-92-isss624.netlify.app/take-home_ex01/take-home_ex01#status-of-waterpoints), there should be 29 missing values in polygon IDs where the waterpoings actually fall outside of the boundary of Nigeria.
+As found in [take-home exercise 1](https://lins-92-isss624.netlify.app/take-home_ex01/take-home_ex01#status-of-waterpoints), there should be 29 missing values in polygon IDs where the waterpoints actually fall outside of the boundary of Nigeria.
 
 ```{r}
 sum(is.na(wp_sf$shapeID))
 ```
 
-The next step is to collapse the dataset by administrative area to get the proportion and number of waterpoints by the relevant variables. First, we need to strip the geometry from the dataset in order to manipulate it.
+The next step is to collapse the dataset by administrative area to get the proportion and number of waterpoints by the relevant variables. First, we need to strip the geometry from the dataset in order to manipulate it and remove the waterpoints that are not located within Nigeria. Then, we use the `group_by()` and `summarise()` functions to count the total number of waterpoints that meet each criteria. Because the variables were in binary format, we can just sum up each column.
 
 ```{r}
 joinvars <- wp_sf %>%
@@ -237,9 +243,9 @@ We can examine the distribution of the cluster variables. The `plot_num()` funct
 plot_num(joinvars)
 ```
 
-The distribution of absolute number of functional and non-functional waterpoints is right skewed. The proportion of rural waterpoints is also left skewed but not as much as handpump proportion. Nonetheless, the hierarchical clustering technique is not as sensitive to outliers so there is no need to address outliers.
+The distribution of absolute number of functional and non-functional waterpoints is right skewed. The proportion of rural waterpoints is left skewed. Nonetheless, the hierarchical clustering technique is not as sensitive to outliers so there is no need to address outliers.
 
-The following code chunk plots the cluster variables spatially by creating a function. The function is looped over the names of variables of interest using the `map()` function.
+The following code chunk plots each of the cluster variables spatially by creating a function. The function is looped over the names of variables of interest using the `map()` function.
 
 ```{r}
 #| fig-width: 14
@@ -258,7 +264,7 @@ tmap_arrange(eda_maps, asp=1, ncols=3)
 
 There are a few observations we can draw from the maps:
 
--   There are regions with missing data. These regions will need to be dropped.
+-   There are regions with missing data (no waterpoints). These regions will need to be dropped.
 
 ```{r}
 adm_wp <- adm_wp %>%
@@ -349,6 +355,8 @@ Now that we have determined that we should use the Ward method to join clusters 
 hclust_ward <- hclust(proxmat, method = 'ward.D2')
 ```
 
+This next code chunk saves the cluster assignments at k=4 in the adm_wp spatial dataset and plots a parallel coordinates plot to examine the distribution of variables in each cluster.
+
 ```{r}
 groups <- as.factor(cutree(hclust_ward, k=4))
 adm_wp_cluster <- cbind(adm_wp, as.matrix(groups)) %>%
@@ -357,7 +365,7 @@ adm_wp_cluster <- cbind(adm_wp, as.matrix(groups)) %>%
 ggparcoord(data= adm_wp_cluster,
            columns=c(6:9, 11:12),
            mapping = aes(color = as.factor(`HCLUSTER`)),
-           alphaLines = 0.3,
+           alphaLines = 0.4,
            scale="uniminmax",
            boxplot=TRUE) +
   labs(title = "Parallel Coordinates Plots of Waterpoint Availability by Hierarchical Clusters (k=4)",
@@ -372,8 +380,11 @@ ggparcoord(data= adm_wp_cluster,
         legend.position = "none") +
   facet_wrap(~ HCLUSTER)
 ```
+```{r}
+qtm(adm_wp_cluster, "HCLUSTER")
+```
 
-We can attempt to characterise the 4 clusters from the parallel coordinates plots:
+As expected, the clusters are fragmented spatially. We can attempt to characterise the 4 clusters from the parallel coordinates plots:
 
 -   Green cluster 1 (mix of urban and rural, average condition): Mid prop functional and non-functional, low-mid prop low capacity, low-mid prop rural
 
@@ -389,17 +400,15 @@ The final cluster assignment should be informed by whether it can adequately add
 
 Nonetheless, since we are more interested in regionalisation than pure hierarchical clustering, we proceed to plot the 4 clusters spatially first. We can keep in mind that k=7 is the next best number of clusters when checking the spatial clustering results.
 
-```{r}
-qtm(adm_wp_cluster, "HCLUSTER")
-```
-
-As expected, the clusters are fragmented spatially.
-
 ## 5. Spatially Constrained Clustering
+
+### ClustGeo or SKATER Method
 
 For spatially constrained clustering, I will use the ClustGeo method. It mixes 2 distance matrices, one in terms of attribute space and the other in terms of geographical distance, to conduct clustering that considers both spatial structure and attribute similarity/dissimilarity.
 
-This is chosen over the SKATER method where the neighbourhood structure is rigidly defined so clusters can only contain neighbours. The ClustGeo method will allow more flexibility in the spatial structure to consider cohesion within clusters and separation between clsuters in terms of attributes.
+This is chosen over the SKATER method where the neighbourhood structure is rigidly defined so all administrative areas in a cluster must be spatially contiguous (as defined by the spatial weight matrix, whether contiguity or distance based). In some use cases such as defining service regions, this is necessary because of practical considerations like logistics and ease of understanding.
+
+For the use case of regionalisation to give broad recommendations to improve water supply or maintenance, there is no need for each area in a cluster to be spatially contiguous. We can expect there to be some spatial clustering because of underlying geographical factors (e.g. climate, development etc) but these areas need not neccessarily spatially contiguous. The ClustGeo method will allow more flexibility in the spatial structure to consider cohesion within clusters and separation between clsuters in terms of attributes. 
 
 ### Defining the Neighbourhood
 

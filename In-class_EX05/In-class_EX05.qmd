@@ -1,0 +1,466 @@
+---
+title: "In-class_EX05"
+editor: visual
+---
+
+# Explaining Water Point Status in Osun State
+
+In this in-class exercise, we develop an explanatory model for waterpoint status in the Osun state of Nigeria to understand what factors contribute to waterpoints being non-functional. Waterpoint status is a binary variable (functional or not functional), as such, we will use logistic regression for this exercise.
+
+The explanatory variables to be used are listed below. Most of the variables are continuous and the last 3 variables are not categorical.
+
+-   distance to primary road,
+
+-   distance to secondary road,
+
+-   distance to tertiary toad,
+
+-   distance to city,
+
+-   distance to town,
+
+-   waterpoint population,
+
+-   location population 1km,
+
+-   usage capacity,
+
+-   is urban,
+
+-   watersource clean
+
+## 1. Setting Up
+
+### Loading Packages
+
+We will use the following packages:
+
+-   **sf** and **spdep**: spatial data handling and spatial weights
+
+-   **tidyverse**: manipulation of attribute data and plotting visualisations (aspatial)
+
+-   **skimr** and **funModeling**: exploratory data analysis
+
+-   **caret**: generating confusion matrices
+
+-   **tmap**: creating map visualisations
+
+-   **corrplot** and **ggpubr**: multivariate data analysis and visualisation
+
+-   **blorr**: building logistic regression and performing diagnostics tests
+
+-   **GWmodel**: calibrating geographical weighted family of models
+
+-   **gtsummary**: create publication-ready analytical and summary tables
+
+```{r}
+#| output: false
+#| message: false
+
+pacman::p_load(corrplot, ggpubr, sf, spdep, GWmodel, tmap, tidyverse, 
+               gtsummary, kableExtra, skimr, funModeling, blorr, caret)
+```
+
+### Loading Dataset
+
+Now we load the geospatial data of the waterpoints in Osun state.
+
+```{r}
+wp <- readRDS("data/osun_wp_sf.rds")
+```
+
+```{r}
+glimpse(wp)
+```
+
+Next, we need to load the dataset containing the boundaries of the administrative areas of Osun state.
+
+```{r}
+osun <- readRDS("data/Osun.rds")
+```
+
+```{r}
+glimpse(osun)
+```
+
+Let's plot the data out on a map.
+
+```{r}
+tm_shape(osun) +
+  tm_polygons()+
+tm_shape(wp)+
+  tm_dots()
+```
+
+## 2. Exploratory Data Analysis
+
+We should check the distribution of the dependent variable of waterpoint status. We need to make sure that it is indeed binary and check how skewed the distribution is. If one outcome is much more common than others, the model may not be as effective at predicting the less common outcome.
+
+```{r}
+freq(wp, input='status')
+```
+
+```{r}
+tmap_mode("view")
+
+tm_shape(osun) +
+  tm_polygons(alpha=0.4) +
+tm_shape(wp) +
+  tm_dots(col="status",
+          alpha=0.6) +
+  tm_view(set.zoom.limits = c(9, 12))
+```
+
+the skim() function of the skimr package to do quick exploratory data analysis. For categorical variables, it shows the number of the missing values and unique variable view. For binary variables, shows the number of missing values and gives a frequency count. For numercial fields, on top of missing values, it also shows some summary statistics like mean, standard deviation.
+
+```{r}
+skim(wp)
+```
+
+There are some missing values for 2 of the variables (water_point_population, local_population_1km). The following code chunk removes any observations with missing values in any of the explanatory variables. We create a list a of all the variables of interest and filter out any observations with missing values in any of the variables in this list.
+
+```{r}
+expvars <- c("status","distance_to_primary_road", "distance_to_secondary_road",
+             "distance_to_tertiary_road", "distance_to_city", 
+             "distance_to_town", "water_point_population",
+             "local_population_1km", "usage_capacity", "is_urban",
+             "water_source_clean")
+
+wp_clean <- wp %>%
+  filter(!if_any(expvars, ~is.na(.x)))%>%
+  mutate(usage_capacity = as.factor(usage_capacity))
+```
+
+Next, we need to check for multicollinearity. As we cannot o that on the data with geometry information, we need to strip the geometry information with `st_set_geometry(NULL)`. We can then plot the correlation matrix.
+
+```{r}
+wp_vars <- wp_clean %>%
+  select(expvars)%>%
+  st_set_geometry(NULL)
+```
+
+```{r}
+vars.cor = cor(wp_vars[2:7])
+corrplot.mixed(vars.cor,
+               lower="ellipse",
+               upper="number",
+               tl.pos = "lt",
+               diag="l",
+               tl.col = "black")
+```
+
+There are no variables that display multi-collinearity so we do not need to drop any. Now we can proceed to do a logistic regression. The first line of the code below creates the regression formula from the list of variables of interest using the `paste()` function. This method of creating a formula from lists is convenient when we have many explanatory variables so we don't need to keep typing it out. We can then input the formula into the `glm()` function to perform the regression.
+
+```{r}
+fm <- as.formula(paste("status ~", 
+                       paste(expvars[2:11], collapse="+")))
+
+model <- glm(fm, 
+             data=wp_clean, 
+             family=binomial(link="logit"))
+```
+
+The `blr_regress()` function of the blorr package creates a neat logistic regression report.
+
+```{r}
+blr_regress(model)
+```
+
+There are 2 variables which are not statistically significant (p-value\>0.05). They are not good predictors and should be considered. distance_to_tertiary_road, distance_to_city, distance_to_town and local_population_1km have positive coefficients, indicating that larger values correspond with higher possibility of a waterpoint being functional.
+
+We should check the confusion matrix of the model to check the prediction accuracy. The `blr_confusion_matrix()` function can conveniently generate this information for us. We can also change the cutoff threshold (probability at which to classify the result as TRUE or FALSE).
+
+```{r}
+blr_confusion_matrix(model, cutoff=0.5)
+```
+
+The overall accuracy of the model is 67%. The model is better at predicting positives than negatives as the true positive rate (sensitivity) is higher than the true negative rate (specificity).
+
+## 3. Geographically Weighted Logistic Regression
+
+Next, we want to conduct a geographically weighted logistic regression.
+
+```{r}
+wp_clean_sp <- wp_clean %>%
+  select(expvars) %>%
+  as_Spatial()
+
+wp_clean_sp
+```
+
+The next step is to create the spatial weights matrix. We need to use a distance-based spatial weights matrix to conduct the logistic regression. The following code chunk uses AIC to recommend the maximum distance to consider neighbours for a fixed distance matrix.
+
+```{r}
+#| output: false
+#| message: false
+
+bw.fixed <- bw.ggwr(fm, 
+                    data=wp_clean_sp,
+                    family = "binomial",
+                    approach= "AIC",
+                    kernel = "gaussian",
+                    adaptive = FALSE,
+                    longlat= FALSE)
+```
+
+```{r}
+bw.fixed
+```
+
+The recommended maximum bandwidth for fixed distance matrix is 2599.672m.
+
+```{r}
+gwlr.fixed <- ggwr.basic(fm,
+                         data=wp_clean_sp,
+                         bw = 2599.672,
+                         family = "binomial",
+                         kernel = "gaussian",
+                         adaptive = FALSE,
+                         longlat= FALSE)
+```
+
+```{r}
+gwlr.fixed
+```
+
+We can compare the global logistic regression and the GWLR by comparing the AICc. The AICc of the GWLR (4747.423) is lower than that of the global model (5712.099) , which means that the GWLR is a better explanatory model than the global model.
+
+In order to assess the performance of the GWLR, we need to extract the output into a dataframe.
+
+```{r}
+gwr.fixed <- as.data.frame(gwlr.fixed$SDF)
+```
+
+We manually compute the predicted waterpoint status from the probability that the waterpoint is functional (yhat) using the threshold of 0.5 again.
+
+```{r}
+gwr.fixed <- gwr.fixed %>%
+  mutate(most = ifelse(
+    yhat >= 0.5, T, F
+  ))
+```
+
+The following code chunk creates a confusion matrix by comparing the actual outcome with the predicted likely outcome.
+
+```{r}
+gwr.fixed$y <- as.factor(gwr.fixed$y)
+gwr.fixed$most <- as.factor(gwr.fixed$most)
+
+CM <- confusionMatrix(data=gwr.fixed$most, 
+                      positive= "TRUE",
+                      reference = gwr.fixed$y)
+CM
+```
+
+The accuracy of the local model is much higher than the global model (88% compared to 67%). The true positive (sensitivity) and true negative (specificity) rates have also improved compared to the global model. The local model is much better at explaining occurrence of non-functional waterpoints compared to the global model (specificity increased from 61% to 86%). This indicates that if we want to address the issue of non-functional waterpoints, it would be more effective to consider local factors.
+
+We can plot the predicted outcome spatially by extracting the sdf output from the model as an sf object.
+
+```{r}
+gwr.fixed.sf <- st_as_sf(gwlr.fixed$SDF)
+```
+
+```{r}
+estprob <- tm_shape(osun)+
+  tm_polygons(alpha=0.1)+
+  tm_text(text="ADM2_EN")+
+  tm_shape(gwr.fixed.sf) +
+  tm_dots(col="yhat",
+          border.col = "gray60",
+          border.lwd = 1, 
+          palette = "YlOrRd") +
+  tm_view(set.zoom.limits = c(9, 12))
+
+actual <- tm_shape(osun)+
+  tm_polygons(alpha=0.1)+
+  tm_text(text="ADM2_EN")+
+  tm_shape(gwr.fixed.sf) +
+  tm_dots(col="y",
+          border.col = "gray60",
+          border.lwd = 1,
+          palette = c("#FFFFB2", "#BD0026")) +
+  tm_view(set.zoom.limits = c(9, 12))
+
+tmap_arrange(actual, estprob,
+           asp=1, ncol=2,
+           sync = TRUE)
+  
+```
+
+As yhat is the probability of a waterpoint being functional, the lighter coloured dots have higher likelihood of being non-functional. It appears that there is some clustering of non-functional waterpoints, especially in Osogbo, Ifelodun and Boripe.
+
+### Refining the Model
+
+We can further refine the model by removing the variables (distance_to_primary_road, distance_to_secondary_road ) that we previously identified as not statistically significant. To do that, we create a new formula without those variables. We then need to find the recommended fixed bandwidth for the formula.
+
+```{r}
+#| output: false
+#| message: false
+
+fm2 <- as.formula(paste("status ~", 
+                       paste(expvars[4:11], collapse="+")))
+
+bw.fixed <- bw.ggwr(fm2, 
+                    data=wp_clean_sp,
+                    family = "binomial",
+                    approach= "AIC",
+                    kernel = "gaussian",
+                    adaptive = FALSE,
+                    longlat= FALSE)
+```
+
+```{r}
+bw.fixed
+```
+
+The recommended fixed bandwidth is 2377.371m.
+
+```{r}
+gwlr2.fixed <- ggwr.basic(fm2,
+                         data=wp_clean_sp,
+                         bw = 2377.371,
+                         family = "binomial",
+                         kernel = "gaussian",
+                         adaptive = FALSE,
+                         longlat= FALSE)
+```
+
+```{r}
+gwlr2.fixed
+```
+
+All the variables at statistically significant at 5% significant level.
+
+The median coefficient of distance_to_tertiary_road and local_population_1km were positive. This means that in general, the further away a waterpoint is from a tertiary road and the larger the population within 1km radius of the waterpoint, the more likely it is for a waterpoint to be functional.
+
+The median coefficients for distance_to_city, distance_to_town and waterpoint population were negative. Meaning that in general, the further the waterpoint was to a city or town, the less likely they were to be functional. Waterpoints with more people depending on it were less likely to be functional. Waterpoints located in urban areas were also less likely to be functional than rural waterpoints.
+
+The AICc of the local model (4744.213) is lower than that of the global model (5708.923). As such, it is a better explanatory model than the local model. The revised local model is slightly better than the first local model (AICc of 4747.423) after removing the explanatory variables that are not statistically significant.
+
+We should also compare the confusion matrix of the new local model with the first local model.
+
+```{r}
+gwr2.fixed <- as.data.frame(gwlr2.fixed$SDF) %>%
+  mutate(most = as.factor(
+    ifelse(
+      yhat >= 0.5, T, F)),
+    y = as.factor(y)
+  )
+```
+
+```{r}
+CM
+```
+
+```{r}
+CM2 <- confusionMatrix(data=gwr2.fixed$most, 
+                       positive = "TRUE",
+                      reference = gwr2.fixed$y)
+CM2
+```
+
+The accuracy has increased slightly from the first model (0.8837) to the second model (0.8846). The second model is slightly worse at predicting functional waterpoints because the sensitivity (true positive rate) has decreased. However, the second model is slightly better at predicting non-functional waterpoints with a higher specificity or true negative rate (0.8671 \>0.8628).
+
+Another method to increase the true negative rate is to adjust the threshold value. The code chunk below calculates the confusion matrix if we increase the threshold value to 0.6. True negative rate or specificity is the number of true negatives out of actual negatives. Increasing the threshold value imposes a higher level of certainty to classify an observation as positive. This should reduce the number of negatives misclassified as positive and increase specificity.
+
+Correspondingly, the true positive rate and overall accuracy will be adversely affected but we are more interested in explaining negatives so this may be an acceptable trade-off.
+
+```{r}
+gwr2.fixed <- gwr2.fixed %>%
+  mutate(most2 = as.factor(
+    ifelse(
+      yhat >= 0.6, T, F))
+  )
+
+CM3 <- confusionMatrix(data=gwr2.fixed$most2, 
+                       positive = "TRUE",
+                      reference = gwr2.fixed$y)
+CM3
+```
+
+As we can see, by increasing the threshold value, we can now predict 93% of non-functional waterpoints. There has been some decrease in true positive rate and accuracy as there will be more false negatives.
+
+Now, let's plot the predicted results of the second model spatially.
+
+```{r}
+gwr2.fixed.sf <- st_as_sf(gwlr2.fixed$SDF) 
+```
+
+```{r}
+estprob <- tm_shape(osun)+
+  tm_polygons(alpha=0.1)+
+  tm_text(text="ADM2_EN")+
+  tm_shape(gwr2.fixed.sf) +
+  tm_dots(col="yhat",
+          border.col = "gray60",
+          border.lwd = 1, 
+          palette = "YlOrRd") +
+  tm_view(set.zoom.limits = c(9, 12))
+
+tmap_arrange(actual, estprob,
+           asp=1, ncol=2,
+           sync = TRUE)
+  
+```
+
+We should also directly compare the prediction result with the actual. The code chunk below adds the prediction results based on the 0.6 threshold level. We also add indicators for false negatives and false positives to see if the misclassifications show spatial depedency.
+
+```{r}
+gwr2.fixed.sf <- gwr2.fixed.sf%>%
+  mutate(thres0.6 = as.factor(
+    ifelse(yhat >= 0.6, T, F)),
+    y = as.factor(y),
+    FP = ifelse(thres0.6==T & y==F, T, F),
+    FN = ifelse(thres0.6==F & y==T, T, F)
+  )
+```
+
+```{r}
+#| fig-width: 14
+#| fig-height: 12
+
+pred0.6 <- tm_shape(osun)+
+  tm_polygons(alpha=0.1)+
+  tm_text(text="ADM2_EN")+
+  tm_shape(gwr2.fixed.sf) +
+  tm_dots(col="thres0.6",
+          border.col = "gray60",
+          border.lwd = 1, 
+          palette = c("#FFFFB2", "#BD0026")) +
+  tm_view(set.zoom.limits = c(9, 12))
+
+FN <- tm_shape(osun)+
+  tm_polygons(alpha=0.1)+
+  tm_text(text="ADM2_EN")+
+  tm_shape(filter(gwr2.fixed.sf, FN==T)) +
+  tm_dots(col="FN",
+          border.col = "gray60",
+          border.lwd = 1,
+          palette = c("#FFFFFF", "#000000")) +
+  tm_view(set.zoom.limits = c(9, 12))
+
+FP <- tm_shape(osun)+
+  tm_polygons(alpha=0.1)+
+  tm_text(text="ADM2_EN")+
+  tm_shape(filter(gwr2.fixed.sf, FP==T)) +
+  tm_dots(col="FP",
+          border.col = "gray60",
+          border.lwd = 1,
+          palette = c("#FFFFFF", "#000000")) +
+  tm_view(set.zoom.limits = c(9, 12))
+
+
+tmap_arrange(actual, pred0.6, FP, FN,
+           asp=1, ncol=2,
+           sync = TRUE)
+```
+
+There appears to be some clustering of false negatives (false non-functional) in Osogbo and Ilesha West which is not present in the false positives map.
+
+## 5. Conclusion
+
+From the analysis above, we can can conclude that consideration of spatial dependency improves the prediction of functionality of waterpoints. An interesting result is that waterpoints that are further from tertiary roads (poor access in general) were more like to be functional, but those near from to cities/towns or in urban areas (good access to urban population) were more likely to be functional.
+
+This is an interesting finding because it appears to be contradictory. Waterpoints in rural areas that were far from tertiary roads would be more difficult to access for maintenance but were more likely to be functional, which could indicate that excessive demand in rural areas is a bigger cause for concern to waterpoint functionality than maintenance. On the other hand, urban areas which have good excess and likely high demand are also more likely to be functional, possibly because easy access and larger dependent population means better maintenance regimes in these areas.
+
+Further study on the local coefficients within the local model is needed to understand the trends. Another interesting variable to study would be the age of waterpoint or time since last maintenance as an indicator of state of depreciation.
